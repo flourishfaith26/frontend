@@ -15,13 +15,14 @@ const PaneContainer = styled('div', {
     backgroundColor: '$bg',
     overflowY: 'auto',
     animation: `${slideIn} 0.2s ease-out`,
-    color: '$textMain'
+    color: '$textMain',
+    padding: '0 max(20px, calc(50% - 360px))'
 });
 
 const PaneHeader = styled('div', {
     display: 'flex',
     alignItems: 'center',
-    padding: '24px 20px',
+    padding: '32px 0 24px',
     backgroundColor: '$bg',
     gap: '16px',
     position: 'sticky',
@@ -32,30 +33,31 @@ const PaneHeader = styled('div', {
 
 const HeaderTitle = styled('h2', {
     margin: 0,
-    fontSize: '1.2rem',
+    fontSize: '1.4rem',
     color: '$textMain',
-    fontWeight: '600',
-    letterSpacing: '0.3px'
+    fontWeight: '700',
+    letterSpacing: '-0.3px'
 });
 
 const Section = styled('div', {
-    padding: '0 20px 24px',
+    padding: '12px 0 32px',
 });
 
 const SectionTitle = styled('h3', {
-    margin: '24px 0 12px 12px',
-    fontSize: '0.85rem',
-    color: '$accent',
-    fontWeight: '600',
+    margin: '0 0 12px 4px',
+    fontSize: '0.75rem',
+    color: '$textMuted',
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: '0.5px'
+    letterSpacing: '0.05em'
 });
 
 const SectionCard = styled('div', {
-    backgroundColor: '$surface',
+    backgroundColor: 'var(--colors-surface)',
     borderRadius: '16px',
     overflow: 'hidden',
-    border: '1px solid rgba(255,255,255,0.02)'
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
 });
 
 const SettingRow = styled('div', {
@@ -63,7 +65,7 @@ const SettingRow = styled('div', {
     alignItems: 'center',
     padding: '16px 20px',
     gap: '16px',
-    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
     transition: 'background-color 0.2s',
     '&:last-child': {
         borderBottom: 'none'
@@ -73,7 +75,7 @@ const SettingRow = styled('div', {
             true: {
                 cursor: 'pointer',
                 '&:hover': {
-                    backgroundColor: 'rgba(255,255,255,0.02)'
+                    backgroundColor: 'rgba(255,255,255,0.03)'
                 }
             }
         }
@@ -84,10 +86,13 @@ const IconWrapper = styled('div', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '40px',
-    height: '40px',
+    width: '36px',
+    height: '36px',
     borderRadius: '10px',
-    flexShrink: 0
+    flexShrink: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    color: 'var(--colors-textMain)',
+    border: '1px solid rgba(255, 255, 255, 0.04)'
 });
 
 const SettingText = styled('div', {
@@ -128,6 +133,10 @@ const StyledSelect = styled('select', {
     },
     '&:focus': {
         borderColor: '$accent'
+    },
+    '& option': {
+        backgroundColor: '#0F172A',
+        color: 'white'
     }
 });
 
@@ -188,7 +197,7 @@ export const AccountPane = ({ onBack, settings, updateSetting }) => (
             <SectionTitle>Security</SectionTitle>
             <SectionCard>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}><Shield size={20}/></IconWrapper>
+                    <IconWrapper><Shield size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Security notifications</SettingLabel>
                         <SettingDescription>Show security notifications on this computer.</SettingDescription>
@@ -200,14 +209,14 @@ export const AccountPane = ({ onBack, settings, updateSetting }) => (
             <SectionTitle>Data</SectionTitle>
             <SectionCard>
                 <SettingRow clickable>
-                    <IconWrapper style={{ backgroundColor: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }}><DownloadCloud size={20}/></IconWrapper>
+                    <IconWrapper><DownloadCloud size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Request account info</SettingLabel>
                         <SettingDescription>Download your account information and settings.</SettingDescription>
                     </SettingText>
                 </SettingRow>
                 <SettingRow clickable style={{ color: '#ef4444' }}>
-                    <IconWrapper style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}><Trash2 size={20}/></IconWrapper>
+                    <IconWrapper><Trash2 size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel style={{ color: '#ef4444' }}>Delete my account</SettingLabel>
                         <SettingDescription>Permanently delete your account and all data.</SettingDescription>
@@ -228,7 +237,7 @@ export const PrivacyPane = ({ onBack, settings, updateSetting }) => (
             <SectionTitle>Visibility</SectionTitle>
             <SectionCard>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(6, 182, 212, 0.1)', color: '#06B6D4' }}><Globe size={20}/></IconWrapper>
+                    <IconWrapper><Globe size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Last seen and online</SettingLabel>
                     </SettingText>
@@ -242,7 +251,7 @@ export const PrivacyPane = ({ onBack, settings, updateSetting }) => (
                     </StyledSelect>
                 </SettingRow>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(236, 72, 153, 0.1)', color: '#EC4899' }}><ImageIcon size={20}/></IconWrapper>
+                    <IconWrapper><ImageIcon size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Profile photo</SettingLabel>
                     </SettingText>
@@ -260,7 +269,7 @@ export const PrivacyPane = ({ onBack, settings, updateSetting }) => (
             <SectionTitle>Messaging</SectionTitle>
             <SectionCard>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}><Check size={20}/></IconWrapper>
+                    <IconWrapper><Check size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Read receipts</SettingLabel>
                         <SettingDescription>If turned off, you won't send or receive read receipts.</SettingDescription>
@@ -268,7 +277,7 @@ export const PrivacyPane = ({ onBack, settings, updateSetting }) => (
                     <Toggle checked={settings.readReceipts} onChange={(e) => updateSetting('readReceipts', e.target.checked)} />
                 </SettingRow>
                 <SettingRow clickable>
-                    <IconWrapper style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' }}><EyeOff size={20}/></IconWrapper>
+                    <IconWrapper><EyeOff size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Blocked contacts</SettingLabel>
                         <SettingDescription>0 contacts</SettingDescription>
@@ -343,7 +352,7 @@ export const ChatsPane = ({ onBack, settings, updateSetting, getAccessTokenSilen
                 <SectionTitle>Display</SectionTitle>
                 <SectionCard>
                     <SettingRow>
-                        <IconWrapper style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#A855F7' }}><Moon size={20}/></IconWrapper>
+                        <IconWrapper><Moon size={20}/></IconWrapper>
                         <SettingText>
                             <SettingLabel>Theme</SettingLabel>
                         </SettingText>
@@ -459,7 +468,7 @@ export const ChatsPane = ({ onBack, settings, updateSetting, getAccessTokenSilen
                 <SectionTitle>Input</SectionTitle>
                 <SectionCard>
                     <SettingRow>
-                        <IconWrapper style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}><Type size={20}/></IconWrapper>
+                        <IconWrapper><Type size={20}/></IconWrapper>
                         <SettingText>
                             <SettingLabel>Enter is send</SettingLabel>
                             <SettingDescription>Enter key will send your message</SettingDescription>
@@ -473,7 +482,7 @@ export const ChatsPane = ({ onBack, settings, updateSetting, getAccessTokenSilen
                 <SectionTitle>Integrations</SectionTitle>
                 <SectionCard>
                     <SettingRow>
-                        <IconWrapper style={{ backgroundColor: 'rgba(236, 72, 153, 0.1)', color: '#EC4899' }}><Globe size={20}/></IconWrapper>
+                        <IconWrapper><Globe size={20}/></IconWrapper>
                         <SettingText>
                             <SettingLabel>Rich Ecosystem Integrations</SettingLabel>
                             <SettingDescription>Native URL parser intercepts GitHub, Figma, and Notion links, transforming them into interactive, dark-themed embed cards.</SettingDescription>
@@ -496,7 +505,7 @@ export const NotificationsPane = ({ onBack, settings, updateSetting }) => (
             <SectionTitle>Messages</SectionTitle>
             <SectionCard>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(6, 182, 212, 0.1)', color: '#06B6D4' }}><Bell size={20}/></IconWrapper>
+                    <IconWrapper><Bell size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Message notifications</SettingLabel>
                         <SettingDescription>Show notifications for new messages</SettingDescription>
@@ -504,7 +513,7 @@ export const NotificationsPane = ({ onBack, settings, updateSetting }) => (
                     <Toggle checked={settings.messageAlerts} onChange={(e) => updateSetting('messageAlerts', e.target.checked)} />
                 </SettingRow>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }}><Smartphone size={20}/></IconWrapper>
+                    <IconWrapper><Smartphone size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Show previews</SettingLabel>
                         <SettingDescription>Show message text in new message notifications</SettingDescription>
@@ -512,7 +521,7 @@ export const NotificationsPane = ({ onBack, settings, updateSetting }) => (
                     <Toggle checked={settings.showPreviews} onChange={(e) => updateSetting('showPreviews', e.target.checked)} />
                 </SettingRow>
                 <SettingRow>
-                    <IconWrapper style={{ backgroundColor: 'rgba(236, 72, 153, 0.1)', color: '#EC4899' }}><Volume2 size={20}/></IconWrapper>
+                    <IconWrapper><Volume2 size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Sounds</SettingLabel>
                         <SettingDescription>Play sounds for incoming messages</SettingDescription>
@@ -553,10 +562,10 @@ export const HelpPane = ({ onBack }) => (
         </PaneHeader>
         <Section>
             <SectionCard>
-                <SettingRow clickable><IconWrapper style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}><HelpCircle size={20}/></IconWrapper><SettingLabel>Help Centre</SettingLabel></SettingRow>
-                <SettingRow clickable><IconWrapper style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}><MessageSquare size={20}/></IconWrapper><SettingLabel>Contact us</SettingLabel></SettingRow>
-                <SettingRow clickable><IconWrapper style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' }}><Shield size={20}/></IconWrapper><SettingLabel>Terms and Privacy Policy</SettingLabel></SettingRow>
-                <SettingRow clickable><IconWrapper style={{ backgroundColor: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }}><Monitor size={20}/></IconWrapper><SettingLabel>Channel guidelines</SettingLabel></SettingRow>
+                <SettingRow clickable><IconWrapper><HelpCircle size={20}/></IconWrapper><SettingLabel>Help Centre</SettingLabel></SettingRow>
+                <SettingRow clickable><IconWrapper><MessageSquare size={20}/></IconWrapper><SettingLabel>Contact us</SettingLabel></SettingRow>
+                <SettingRow clickable><IconWrapper><Shield size={20}/></IconWrapper><SettingLabel>Terms and Privacy Policy</SettingLabel></SettingRow>
+                <SettingRow clickable><IconWrapper><Monitor size={20}/></IconWrapper><SettingLabel>Channel guidelines</SettingLabel></SettingRow>
             </SectionCard>
         </Section>
     </PaneContainer>

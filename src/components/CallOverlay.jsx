@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { styled, keyframes } from '../stitches.config.js';
-import { Phone, PhoneOff, Video, Mic, MicOff, VideoOff } from 'lucide-react';
+import { Phone, PhoneOff, Video, Mic, MicOff, VideoOff, UserPlus, X } from 'lucide-react';
 
 const OverlayContainer = styled('div', {
     position: 'fixed',
@@ -98,22 +98,64 @@ const ControlsBar = styled('div', {
 });
 
 const ControlButton = styled('button', {
-    width: '50px',
-    height: '50px',
+    width: '60px',
+    height: '60px',
     borderRadius: '50%',
-    border: 'none',
+    border: '2px solid transparent',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    transition: 'all 0.3s ease',
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
     color: '#fff',
+    backdropFilter: 'blur(8px)',
     variants: {
         color: {
-            danger: { backgroundColor: '#EF4444', '&:hover': { backgroundColor: '#DC2626' } },
-            success: { backgroundColor: '#10B981', '&:hover': { backgroundColor: '#059669' } },
-            neutral: { backgroundColor: '#334155', '&:hover': { backgroundColor: '#475569' } },
-            active: { backgroundColor: '#06B6D4', '&:hover': { backgroundColor: '#0891B2' } }
+            danger: { 
+                color: '#EF4444', 
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)',
+                '&:hover': { 
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    boxShadow: '0 0 20px rgba(239, 68, 68, 0.4)',
+                    borderColor: '#EF4444'
+                } 
+            },
+            success: { 
+                color: '#06B6D4',
+                borderColor: 'rgba(6, 182, 212, 0.5)',
+                boxShadow: '0 0 15px rgba(6, 182, 212, 0.2)',
+                '&:hover': { 
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    boxShadow: '0 0 20px rgba(6, 182, 212, 0.4)',
+                    borderColor: '#06B6D4'
+                } 
+            },
+            neutral: { 
+                color: '#94A3B8',
+                borderColor: 'rgba(148, 163, 184, 0.3)',
+                '&:hover': { 
+                    backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                    borderColor: '#94A3B8',
+                    color: '#fff'
+                } 
+            },
+            active: { 
+                color: '#06B6D4', 
+                borderColor: '#06B6D4',
+                backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                boxShadow: '0 0 15px rgba(6, 182, 212, 0.3)',
+                '&:hover': { 
+                    backgroundColor: 'rgba(6, 182, 212, 0.3)',
+                    boxShadow: '0 0 20px rgba(6, 182, 212, 0.5)',
+                } 
+            }
+        },
+        pulsing: {
+            true: {
+                animation: `${pulseAnimation} 2s infinite`,
+            }
         }
     },
     defaultVariants: {
@@ -139,6 +181,16 @@ const CallOverlay = ({
     const myVideo = useRef();
     const remoteVideo = useRef();
     const connectionRef = useRef();
+
+    const [isAddingPerson, setIsAddingPerson] = useState(false);
+    const [toastMsg, setToastMsg] = useState(null);
+
+    useEffect(() => {
+        if (toastMsg) {
+            const t = setTimeout(() => setToastMsg(null), 3000);
+            return () => clearTimeout(t);
+        }
+    }, [toastMsg]);
 
     useEffect(() => {
         if (!callConfig || !callConfig.active) return;
@@ -311,10 +363,13 @@ const CallOverlay = ({
     const handleEndCall = (emitEvent = true) => {
         // Emit log_call only if we are the caller
         if (socket && callConfig && !callConfig.isReceiving) {
-            const otherUserId = activeConversation?.participants?.find(p => p._id !== mongoUserId)?._id;
+            const isGroup = activeConversation?.type === 'group';
+            const otherUserId = isGroup ? null : activeConversation?.participants?.find(p => p._id !== mongoUserId)?._id;
+            
             socket.emit('log_call', {
                 callerId: mongoUserId,
                 receiverId: otherUserId,
+                conversationId: isGroup ? activeConversation._id : undefined,
                 type: callConfig.callType,
                 status: callAcceptedRef.current ? 'completed' : 'missed'
             });
@@ -387,7 +442,7 @@ const CallOverlay = ({
                             <ControlButton color="danger" onClick={() => handleEndCall(true)}>
                                 <PhoneOff size={24} />
                             </ControlButton>
-                            <ControlButton color="success" onClick={answerCall}>
+                            <ControlButton color="success" pulsing={true} onClick={answerCall}>
                                 <Phone size={24} />
                             </ControlButton>
                         </div>
@@ -446,10 +501,63 @@ const CallOverlay = ({
                         {isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
                     </ControlButton>
                     
+                    <ControlButton 
+                        color="neutral" 
+                        onClick={() => setIsAddingPerson(true)}
+                        title="Add Person"
+                    >
+                        <UserPlus size={20} />
+                    </ControlButton>
+                    
                     <ControlButton color="danger" onClick={() => handleEndCall(true)} title="End Call">
                         <PhoneOff size={20} />
                     </ControlButton>
                 </ControlsBar>
+            )}
+
+            {/* Add Person Modal */}
+            {isAddingPerson && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, backdropFilter: 'blur(5px)' }}>
+                    <div style={{ width: '90%', maxWidth: '400px', backgroundColor: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '24px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '600' }}>Add to Call</h3>
+                            <button onClick={() => setIsAddingPerson(false)} style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '300px', overflowY: 'auto' }}>
+                            {activeConversation?.participants?.filter(p => p._id !== mongoUserId).map(p => (
+                                <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', backgroundColor: 'rgba(15, 23, 42, 0.6)', borderRadius: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <img src={p.avatarUrl} alt={p.displayName} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.displayName || 'U')}&background=06B6D4&color=fff` }} />
+                                        <span style={{ fontWeight: '500' }}>{p.displayName}</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            setToastMsg(`Ringing ${p.displayName}...`);
+                                            setTimeout(() => setIsAddingPerson(false), 500);
+                                        }}
+                                        style={{ backgroundColor: '#06B6D4', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontWeight: '500' }}
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            ))}
+                            {(!activeConversation?.participants || activeConversation.participants.length <= 2) && (
+                                <div style={{ color: '#94A3B8', textAlign: 'center', padding: '20px' }}>
+                                    No other participants to add. Group calls coming soon!
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast for Add Person */}
+            {toastMsg && (
+                <div style={{ position: 'fixed', top: '40px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#06B6D4', color: '#fff', padding: '12px 24px', borderRadius: '30px', fontWeight: '500', boxShadow: '0 10px 25px rgba(6, 182, 212, 0.4)', zIndex: 10001, animation: 'slideDown 0.3s ease-out' }}>
+                    {toastMsg}
+                </div>
             )}
         </OverlayContainer>
     );

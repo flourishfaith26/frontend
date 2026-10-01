@@ -9,7 +9,7 @@ import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
 import Whiteboard from '../components/Whiteboard';
 import CallOverlay from '../components/CallOverlay';
-import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus } from 'lucide-react';
+import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 import StoryViewer from '../components/StoryViewer';
 import StatusUploadModal from '../components/StatusUploadModal';
@@ -63,7 +63,7 @@ const NavRailTop = styled('div', {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '$4',
+    gap: '12px',
     flex: 1,
     '@media (max-width: 768px)': {
         flexDirection: 'row',
@@ -76,7 +76,7 @@ const NavRailBottom = styled('div', {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '$4',
+    gap: '12px',
     paddingBottom: '$2',
     '@media (max-width: 768px)': {
         flexDirection: 'row',
@@ -383,6 +383,12 @@ const ChatBubble = styled('div', {
             true: {
                 padding: '2px',
             }
+        },
+        embedOnly: {
+            true: {
+                padding: '0px 0px 20px 0px',
+                overflow: 'hidden',
+            }
         }
     }
 });
@@ -420,27 +426,34 @@ const MessageTime = styled('span', {
 });
 const ContextMenuContainer = styled('div', {
     position: 'absolute',
-    backgroundColor: '$surface',
-    border: '1px solid $border',
-    borderRadius: '8px',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(30, 41, 59, 0.85)',
+    backdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '16px',
+    boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
     zIndex: 2000,
-    minWidth: '150px',
+    minWidth: '240px',
     overflow: 'hidden',
-    padding: '4px 0'
+    padding: '8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
 });
 
 const ContextMenuItem = styled('div', {
-    padding: '10px 16px',
+    padding: '12px 16px',
     cursor: 'pointer',
     color: '$textMain',
-    fontSize: '0.9rem',
+    fontSize: '0.95rem',
+    fontWeight: '500',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    transition: 'background-color 0.2s',
+    gap: '12px',
+    borderRadius: '10px',
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     '&:hover': {
-        backgroundColor: '$bg',
+        backgroundColor: 'rgba(6, 182, 212, 0.15)',
+        color: '$accent',
     }
 });
 
@@ -503,6 +516,10 @@ const Select = styled('select', {
     color: '$textMain',
     border: '1px solid $border',
     outline: 'none',
+    '& option': {
+        backgroundColor: '#0F172A',
+        color: 'white'
+    }
 });
 
 const ModalInput = styled('input', {
@@ -1113,9 +1130,27 @@ export default function Dashboard() {
     // New 3-Pane Layout Drawer State
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+    
+    // Premium Context Menu State
+    const [premiumModal, setPremiumModal] = useState(null);
+    const [mutedConversations, setMutedConversations] = useState([]);
+    const [disappearingConversations, setDisappearingConversations] = useState([]);
+    const [toastMessage, setToastMessage] = useState(null);
+    const [isSelectingMessages, setIsSelectingMessages] = useState(false);
+
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => setToastMessage(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastMessage]);
+
+    const showToast = (msg) => setToastMessage(msg);
+
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(() => {
         return sessionStorage.getItem('isWhiteboardOpen') === 'true';
     });
+    const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
 
     useEffect(() => {
         sessionStorage.setItem('isWhiteboardOpen', isWhiteboardOpen);
@@ -1133,12 +1168,14 @@ export default function Dashboard() {
 
     const formatCallLog = (log, currentUserId) => {
         const isCaller = log.caller._id === currentUserId;
-        const contact = isCaller ? log.receiver : log.caller;
+        const isGroup = !!log.conversation;
+        const contact = isGroup ? log.conversation : (isCaller ? log.receiver : log.caller);
+        
         return {
             id: log._id,
-            contactId: contact._id,
-            contactName: contact.displayName || 'Unknown',
-            contactAvatar: contact.avatarUrl,
+            contactId: contact ? contact._id : null,
+            contactName: isGroup ? contact.name : (contact ? contact.displayName : 'Unknown'),
+            contactAvatar: contact ? (isGroup ? contact.avatarUrl || `https://ui-avatars.com/api/?name=${contact.name}&background=06B6D4&color=fff` : contact.avatarUrl) : null,
             type: log.type,
             direction: isCaller ? 'outgoing' : 'incoming',
             status: log.status,
@@ -1944,7 +1981,7 @@ export default function Dashboard() {
     const activeConversation = conversations.find(c => c._id === activeConversationId);
     const showChatArea = !!activeConversationId || (activeTab === 'settings' && !!activeSettingTab);
 
-    const isImageUrl = (url) => typeof url === 'string' && url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null;
+    const isImageUrl = (url) => typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null || url.startsWith('data:image/'));
     const isAudioUrl = (url) => typeof url === 'string' && url.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) != null;
     const isCloudinaryUrl = (url) => typeof url === 'string' && url.includes('res.cloudinary.com');
 
@@ -1955,20 +1992,27 @@ export default function Dashboard() {
             setActiveConversationId(null);
             setIsDrawerOpen(false);
         }
+        if (tab === 'chats') {
+            if (!activeConversationId && conversations.length > 0) {
+                setActiveConversationId(conversations[0]._id);
+            }
+        }
+        if (tab === 'settings') {
+            const hasVisited = localStorage.getItem('devsup_visited_settings');
+            if (hasVisited && !activeSettingTab) {
+                setActiveSettingTab('Profile');
+            } else if (!hasVisited) {
+                localStorage.setItem('devsup_visited_settings', 'true');
+            }
+        }
     };
 
     return (
         <AppContainer>
             <NavRail mobileHidden={showChatArea}>
                 <NavRailTop>
-                    <NavRailItem active={activeTab === 'status'} onClick={() => handleTabChange('status')} title="Status" style={activeTab === 'status' ? {} : { color: 'var(--colors-textMuted)' }}>
-                        <Code2 size={24} />
-                    </NavRailItem>
                     <NavRailItem active={activeTab === 'chats'} onClick={() => handleTabChange('chats')} title="Chats">
                         <MessageSquare size={22} />
-                    </NavRailItem>
-                    <NavRailItem active={activeTab === 'calls'} onClick={() => handleTabChange('calls')} title="Calls">
-                        <Phone size={22} />
                     </NavRailItem>
                     <NavRailItem
                         active={activeTab === 'communities'}
@@ -1976,6 +2020,12 @@ export default function Dashboard() {
                         title="Communities"
                     >
                         <Users size={22} />
+                    </NavRailItem>
+                    <NavRailItem active={activeTab === 'calls'} onClick={() => handleTabChange('calls')} title="Calls">
+                        <Phone size={22} />
+                    </NavRailItem>
+                    <NavRailItem active={activeTab === 'status'} onClick={() => handleTabChange('status')} title="Status" style={activeTab === 'status' ? {} : { color: 'var(--colors-textMuted)' }}>
+                        <Code2 size={24} />
                     </NavRailItem>
                     <NavRailItem active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} title="Settings">
                         <Settings size={22} />
@@ -2103,36 +2153,41 @@ export default function Dashboard() {
                                         </AvatarWrapper>
 
                                         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                <span style={{ fontSize: '1.05rem', fontWeight: 'normal', color: 'var(--colors-textMain)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {isGroup ? conv.name : (otherParticipant?.displayName || 'Unknown User')}
                                                 </span>
                                                 {conv.lastMessage && (
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--colors-textMuted)', flexShrink: 0 }}>
+                                                    <span style={{ fontSize: '0.75rem', color: conv.unreadCount > 0 ? 'var(--colors-accent)' : 'var(--colors-textMuted)', flexShrink: 0, fontWeight: conv.unreadCount > 0 ? '600' : 'normal' }}>
                                                         {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 )}
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {conv.unreadCount > 0 ? (
-                                                        conv.lastMessage
-                                                            ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
-                                                                (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
-                                                            : 'No messages yet'
-                                                    ) : null}
+                                                <span style={{ fontSize: '0.85rem', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', fontWeight: conv.unreadCount > 0 ? '500' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {conv.lastMessage
+                                                        ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
+                                                            (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
+                                                        : 'No messages yet'}
                                                 </span>
-                                                <IconButton
-                                                    className="conv-delete-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, message: null, callLog: null, conversation: conv });
-                                                    }}
-                                                    title="Options"
-                                                    style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
-                                                >
-                                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                                </IconButton>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    {conv.unreadCount > 0 && (
+                                                        <div style={{ backgroundColor: 'var(--colors-accent)', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
+                                                            {conv.unreadCount}
+                                                        </div>
+                                                    )}
+                                                    <IconButton
+                                                        className="conv-delete-btn"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setContextMenu({ visible: true, x: e.clientX, y: e.clientY, message: null, callLog: null, conversation: conv });
+                                                        }}
+                                                        title="Options"
+                                                        style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
+                                                    >
+                                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                    </IconButton>
+                                                </div>
                                             </div>
                                         </div>
                                     </ChannelItem>
@@ -2177,36 +2232,41 @@ export default function Dashboard() {
                                     </AvatarWrapper>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                            <span style={{ fontSize: '1.05rem', fontWeight: 'normal', color: 'var(--colors-textMain)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                            <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {conv.name}
                                             </span>
                                             {conv.lastMessage && (
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--colors-textMuted)', flexShrink: 0 }}>
+                                                <span style={{ fontSize: '0.75rem', color: conv.unreadCount > 0 ? 'var(--colors-accent)' : 'var(--colors-textMuted)', flexShrink: 0, fontWeight: conv.unreadCount > 0 ? '600' : 'normal' }}>
                                                     {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             )}
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '0.85rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {conv.unreadCount > 0 ? (
-                                                    conv.lastMessage
-                                                        ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
-                                                            (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
-                                                        : 'No messages yet'
-                                                ) : null}
+                                            <span style={{ fontSize: '0.85rem', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', fontWeight: conv.unreadCount > 0 ? '500' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {conv.lastMessage
+                                                    ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
+                                                        (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
+                                                    : 'No messages yet'}
                                             </span>
-                                            <IconButton
-                                                className="conv-delete-btn"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, message: null, callLog: null, conversation: conv });
-                                                }}
-                                                title="Options"
-                                                style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
-                                            >
-                                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                            </IconButton>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {conv.unreadCount > 0 && (
+                                                    <div style={{ backgroundColor: 'var(--colors-accent)', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
+                                                        {conv.unreadCount}
+                                                    </div>
+                                                )}
+                                                <IconButton
+                                                    className="conv-delete-btn"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, message: null, callLog: null, conversation: conv });
+                                                    }}
+                                                    title="Options"
+                                                    style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
+                                                >
+                                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </IconButton>
+                                            </div>
                                         </div>
                                     </div>
                                 </ChannelItem>
@@ -2223,37 +2283,68 @@ export default function Dashboard() {
                         <div style={{ padding: '8px 0' }}>
                             <div style={{ backgroundColor: '$bg', padding: '8px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '$textMuted', marginBottom: '16px' }}>
                                 <Search size={16} />
-                                <span style={{ fontSize: '0.9rem' }}>Search settings</span>
+                                <input 
+                                    type="text"
+                                    placeholder="Search settings"
+                                    value={settingsSearchQuery}
+                                    onChange={(e) => setSettingsSearchQuery(e.target.value)}
+                                    style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--colors-textMain)', fontSize: '0.9rem', width: '100%' }}
+                                />
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '16px' }}>
+                                {/* Profile Section */}
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '16px',
+                                        padding: '16px 12px',
+                                        cursor: 'pointer',
+                                        backgroundColor: activeSettingTab === 'Profile' ? 'var(--colors-bg)' : 'transparent',
+                                        borderRadius: '12px',
+                                        marginBottom: '8px',
+                                        transition: 'background-color 0.2s',
+                                    }}
+                                    onClick={() => setActiveSettingTab('Profile')}
+                                    className="settings-item-profile"
+                                >
+                                    <img src={currentUserData?.avatarUrl || 'https://ui-avatars.com/api/?name=User&background=06B6D4&color=fff'} alt="Profile" style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.target.src = 'https://ui-avatars.com/api/?name=User&background=06B6D4&color=fff' }} />
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ color: 'var(--colors-textMain)', fontSize: '1.1rem', fontWeight: '500', marginBottom: '2px' }}>{currentUserData?.displayName || 'Profile'}</span>
+                                        <span style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>{currentUserData?.about || 'Available'}</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ height: '1px', backgroundColor: 'var(--colors-border)', margin: '8px 0 16px 0' }} />
+
                                 {[
-                                    { id: 'Profile', icon: <img src={currentUserData?.avatarUrl || 'https://via.placeholder.com/40'} alt="Profile" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />, title: currentUserData?.displayName || 'Profile', sub: currentUserData?.about || 'Available' },
-                                    { id: 'Account', icon: <Key size={20} />, title: 'Account', sub: 'Security notifications, change number' },
-                                    { id: 'Privacy', icon: <Lock size={20} />, title: 'Privacy', sub: 'Block contacts, disappearing messages' },
-                                    { id: 'Chats', icon: <MessageSquare size={20} />, title: 'Chats', sub: 'Theme, wallpapers, chat settings' },
-                                    { id: 'Notifications', icon: <Bell size={20} />, title: 'Notifications', sub: 'Message, group & call tones' },
-                                    { id: 'Keyboard shortcuts', icon: <Monitor size={20} />, title: 'Keyboard shortcuts', sub: 'Quick actions' },
-                                    { id: 'Help', icon: <HelpCircle size={20} />, title: 'Help', sub: 'Help centre, contact us, privacy policy' }
-                                ].map((item, i) => (
+                                    { id: 'Account', icon: <Key size={22} />, title: 'Account', sub: 'Security notifications, change number' },
+                                    { id: 'Privacy', icon: <Lock size={22} />, title: 'Privacy', sub: 'Block contacts, disappearing messages' },
+                                    { id: 'Chats', icon: <MessageSquare size={22} />, title: 'Chats', sub: 'Theme, wallpapers, chat settings' },
+                                    { id: 'Notifications', icon: <Bell size={22} />, title: 'Notifications', sub: 'Message, group & call tones' },
+                                    { id: 'Keyboard shortcuts', icon: <Monitor size={22} />, title: 'Keyboard shortcuts', sub: 'Quick actions' },
+                                    { id: 'Help', icon: <HelpCircle size={22} />, title: 'Help', sub: 'Help centre, contact us, privacy policy' }
+                                ].filter(item => item.title.toLowerCase().includes(settingsSearchQuery.toLowerCase()) || item.sub.toLowerCase().includes(settingsSearchQuery.toLowerCase())).map((item, i) => (
                                     <div
                                         key={i}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '16px',
-                                            padding: '12px 8px',
+                                            gap: '20px',
+                                            padding: '14px 12px',
                                             cursor: 'pointer',
                                             backgroundColor: activeSettingTab === item.id ? 'var(--colors-bg)' : 'transparent',
-                                            borderRadius: '8px'
+                                            borderRadius: '8px',
+                                            transition: 'background-color 0.2s',
                                         }}
                                         className="settings-item"
                                         onClick={() => setActiveSettingTab(item.id)}
                                     >
-                                        <div style={{ color: 'var(--colors-textMuted)' }}>{item.icon}</div>
+                                        <div style={{ color: 'var(--colors-textMuted)', width: '28px', display: 'flex', justifyContent: 'center' }}>{item.icon}</div>
                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem' }}>{item.title}</span>
-                                            <span style={{ color: 'var(--colors-textMuted)', fontSize: '0.75rem' }}>{item.sub}</span>
+                                            <span style={{ color: 'var(--colors-textMain)', fontSize: '1rem', marginBottom: '2px' }}>{item.title}</span>
+                                            <span style={{ color: 'var(--colors-textMuted)', fontSize: '0.8rem' }}>{item.sub}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -2333,6 +2424,25 @@ export default function Dashboard() {
                             <HelpPane onBack={() => setActiveSettingTab(null)} />
                         ) : null}
                     </div>
+                ) : activeTab === 'settings' ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', overflow: 'hidden', position: 'relative' }}>
+                        <div style={{ position: 'absolute', width: '400px', height: '400px', borderRadius: '50%', background: 'var(--colors-accent)', filter: 'blur(200px)', opacity: 0.15, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                        <div style={{ 
+                            width: '140px', height: '140px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(6,182,212,0.2) 0%, rgba(6,182,212,0.05) 100%)', 
+                            border: '1px solid rgba(6,182,212,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '32px', 
+                            boxShadow: '0 0 40px rgba(6,182,212,0.15), inset 0 0 20px rgba(6,182,212,0.1)', position: 'relative', zIndex: 1
+                        }}>
+                            <Settings size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
+                        </div>
+                        <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Settings</h2>
+                        <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
+                            Configure your workspace and tailor the DevSup experience. Select an option from the sidebar to begin.
+                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '40px', color: 'var(--colors-textMuted)', fontSize: '0.85rem', position: 'relative', zIndex: 1 }}>
+                            <Lock size={14} />
+                            <span>Your preferences are synced securely across all devices</span>
+                        </div>
+                    </div>
                 ) : activeTab === 'status' ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', overflow: 'hidden', position: 'relative' }}>
                         <div style={{ position: 'absolute', width: '400px', height: '400px', borderRadius: '50%', background: 'var(--colors-accent)', filter: 'blur(200px)', opacity: 0.15, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
@@ -2393,10 +2503,12 @@ export default function Dashboard() {
                                                 />
                                             </AvatarWrapper>
                                             <div style={{ display: 'flex', flexDirection: 'column', maxWidth: '400px' }}>
-                                                <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                                                <span style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     {activeConversation.type === 'group'
                                                         ? activeConversation.name
                                                         : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Direct Message')}
+                                                    {mutedConversations.includes(activeConversation._id) && <BellOff size={14} color="var(--colors-textMuted)" />}
+                                                    {disappearingConversations.includes(activeConversation._id) && <Timer size={14} color="var(--colors-accent)" />}
                                                 </span>
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {activeConversation.type === 'group' ? activeConversation.participants?.map(p => p._id === mongoUserId ? 'You' : p.displayName).join(', ') : 'click here for contact info'}
@@ -2422,7 +2534,11 @@ export default function Dashboard() {
                                             }}
                                         />
                                     )}
-                                    {activeConversation.type === 'group' && (activeConversation.admins?.includes(mongoUserId) || activeConversation.allowAnyMemberToAdd) && (
+                                    {activeConversation.type === 'group' && (
+                                        activeConversation.admins?.includes(mongoUserId) || 
+                                        activeConversation.allowAnyMemberToAdd || 
+                                        (!activeConversation.admins?.length && activeConversation.participants?.[0]?._id === mongoUserId)
+                                    ) && (
                                         <IconButton onClick={() => setIsAddMembersModalOpen(true)} title="Add Members">
                                             <UserPlus size={20} />
                                         </IconButton>
@@ -2437,9 +2553,15 @@ export default function Dashboard() {
                                         <Search size={20} />
                                     </IconButton>
                                     <IconButton
-                                        onClick={() => setIsWhiteboardOpen(true)}
+                                        onClick={() => {
+                                            if (activeTab === 'communities') {
+                                                setCommunityTab('live coding');
+                                            } else {
+                                                setIsWhiteboardOpen(true);
+                                            }
+                                        }}
                                         title="Open Whiteboard"
-                                        style={{ color: isWhiteboardOpen ? 'var(--colors-accent)' : 'inherit' }}
+                                        style={{ color: isWhiteboardOpen || (activeTab === 'communities' && communityTab === 'live coding') ? 'var(--colors-accent)' : 'inherit' }}
                                     >
                                         <Brush size={20} />
                                     </IconButton>
@@ -2453,35 +2575,81 @@ export default function Dashboard() {
                                                     style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1999 }}
                                                     onClick={() => setIsHeaderMenuOpen(false)}
                                                 />
-                                                <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '8px', zIndex: 2000, width: '220px' }}>
+                                                <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '12px', zIndex: 2000 }}>
                                                     <ContextMenuItem onClick={() => { setIsDrawerOpen(true); setIsHeaderMenuOpen(false); }}>
+                                                        <Info size={18} style={{ opacity: 0.8 }} />
                                                         {activeConversation.type === 'group' ? 'Group info' : 'Contact info'}
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert(activeConversation.type === 'group' ? 'Group calls coming soon!' : 'Calls coming soon!'); setIsHeaderMenuOpen(false); }}>
+                                                    <ContextMenuItem onClick={() => { 
+                                                        setCallConfig({ active: true, isReceiving: false, callerData: activeConversation, callType: 'video' });
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        <Video size={18} style={{ opacity: 0.8 }} />
                                                         {activeConversation.type === 'group' ? 'Group calls' : 'Calls'}
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert('Live coding features coming soon!'); setIsHeaderMenuOpen(false); }}>
+                                                    <ContextMenuItem onClick={() => { 
+                                                        setIsWhiteboardOpen(true);
+                                                        showToast('Live Whiteboard & Collaborative Canvas started');
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        <Code2 size={18} style={{ opacity: 0.8 }} />
                                                         Live coding features
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert('Hackathon coming soon!'); setIsHeaderMenuOpen(false); }}>
+                                                    <ContextMenuItem onClick={() => { 
+                                                        setPremiumModal({ title: 'Hackathons & Competitions', subtitle: 'Join live coding battles or organize an event for this group.', type: 'hackathon' });
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        <Rocket size={18} style={{ opacity: 0.8 }} />
                                                         Hackathon
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert('Select messages coming soon!'); setIsHeaderMenuOpen(false); }}>
-                                                        Select messages
+                                                    <ContextMenuItem onClick={() => { 
+                                                        setIsSelectingMessages(!isSelectingMessages); 
+                                                        showToast(isSelectingMessages ? 'Selection mode disabled' : 'Select messages to forward or delete');
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        {isSelectingMessages ? <XCircle size={18} style={{ opacity: 0.8 }} /> : <CheckSquare size={18} style={{ opacity: 0.8 }} />}
+                                                        {isSelectingMessages ? 'Cancel selection' : 'Select messages'}
                                                     </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { setActiveConversationId(null); setIsHeaderMenuOpen(false); }}>
+                                                        <X size={18} style={{ opacity: 0.8 }} />
                                                         Close chat
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert('Mute notifications coming soon!'); setIsHeaderMenuOpen(false); }}>
-                                                        Mute notifications
+                                                    <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '4px 8px' }} />
+                                                    <ContextMenuItem onClick={() => { 
+                                                        const isMuted = mutedConversations.includes(activeConversation._id);
+                                                        if (isMuted) {
+                                                            setMutedConversations(prev => prev.filter(id => id !== activeConversation._id));
+                                                            showToast('Notifications unmuted');
+                                                        } else {
+                                                            setMutedConversations(prev => [...prev, activeConversation._id]);
+                                                            showToast('Notifications muted');
+                                                        }
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        {mutedConversations.includes(activeConversation._id) ? <Bell size={18} style={{ opacity: 0.8 }} /> : <BellOff size={18} style={{ opacity: 0.8 }} />}
+                                                        {mutedConversations.includes(activeConversation._id) ? 'Unmute notifications' : 'Mute notifications'}
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { alert('Disappearing messages coming soon!'); setIsHeaderMenuOpen(false); }}>
-                                                        Disappearing messages
+                                                    <ContextMenuItem onClick={() => { 
+                                                        const isDisappearing = disappearingConversations.includes(activeConversation._id);
+                                                        if (isDisappearing) {
+                                                            setDisappearingConversations(prev => prev.filter(id => id !== activeConversation._id));
+                                                            showToast('Disappearing messages turned off');
+                                                        } else {
+                                                            setDisappearingConversations(prev => [...prev, activeConversation._id]);
+                                                            showToast('Messages will now disappear after 24 hours');
+                                                        }
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }}>
+                                                        <Timer size={18} style={{ opacity: 0.8 }} />
+                                                        {disappearingConversations.includes(activeConversation._id) ? 'Keep messages permanently' : 'Disappearing messages'}
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => { setMessages([]); setIsHeaderMenuOpen(false); }}>
+                                                    <ContextMenuItem onClick={() => { setMessages([]); showToast('Messages cleared from this device'); setIsHeaderMenuOpen(false); }}>
+                                                        <Eraser size={18} style={{ opacity: 0.8 }} />
                                                         Clear messages
                                                     </ContextMenuItem>
+                                                    <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '4px 8px' }} />
                                                     <ContextMenuItem onClick={(e) => { deleteConversation(e, activeConversation._id); setIsHeaderMenuOpen(false); }} style={{ color: '#ef4444' }}>
+                                                        <LogOut size={18} style={{ opacity: 0.8 }} />
                                                         {activeConversation.type === 'group' ? 'Exit group' : 'Delete chat'}
                                                     </ContextMenuItem>
                                                 </ContextMenuContainer>
@@ -2533,17 +2701,27 @@ export default function Dashboard() {
                                                     const isOwnMessage = msg.sender?._id === mongoUserId;
                                                     const isGroup = activeConversation?.type === 'group';
                                                     const showSenderName = isGroup && !isOwnMessage;
-                                                    const isOnlyUrl = msg.content && typeof msg.content === 'string' && msg.content.trim().startsWith('http') && !msg.content.trim().includes(' ');
+                                                    const isOnlyUrl = (msg.content && typeof msg.content === 'string') && (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
+                                                    const embedDataTop = isOnlyUrl && msg.content.trim().startsWith('http') ? detectEcosystemLink(msg.content) : null;
+                                                    const isEmbedOnly = isOnlyUrl && !!embedDataTop;
                                                     const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     return (
-                                                        <ChatBubbleWrapper
-                                                            key={msg._id || msg.createdAt}
-                                                            isOwn={isOwnMessage}
-                                                        >
-                                                            <ChatBubble
+                                                        <div key={msg._id || msg.createdAt} style={{ display: 'flex', flexDirection: isOwnMessage ? 'row-reverse' : 'row', alignItems: 'center', gap: '12px', width: '100%' }}>
+                                                            {isSelectingMessages && (
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    style={{ width: '20px', height: '20px', accentColor: 'var(--colors-accent)', cursor: 'pointer', flexShrink: 0 }} 
+                                                                />
+                                                            )}
+                                                            <ChatBubbleWrapper
+                                                                isOwn={isOwnMessage}
+                                                                style={{ flex: 1, maxWidth: isSelectingMessages ? 'calc(100% - 32px)' : '100%', alignItems: isOwnMessage ? 'flex-end' : 'flex-start' }}
+                                                            >
+                                                                <ChatBubble
                                                                 isOwn={isOwnMessage}
                                                                 mediaOnly={isMediaMessage}
+                                                                embedOnly={isEmbedOnly}
                                                                 onContextMenu={(e) => handleContextMenu(e, 'message', msg)}
                                                                 onTouchStart={(e) => handleTouchStart(e, msg)}
                                                                 onTouchMove={handleTouchMove}
@@ -2577,7 +2755,7 @@ export default function Dashboard() {
                                                                         }
 
                                                                         // Check if message is strictly just a URL
-                                                                        const isOnlyUrl = msg.content.trim().startsWith('http') && !msg.content.trim().includes(' ');
+                                                                        const isOnlyUrl = (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
                                                                         const hasAttachment = embedData || isImageUrl(msg.content) || isAudioUrl(msg.content) || isCloudinaryUrl(msg.content);
                                                                         const shouldShowText = !(isOnlyUrl && hasAttachment);
 
@@ -2590,7 +2768,7 @@ export default function Dashboard() {
                                                                                 )}
 
                                                                                 {embedData && appSettings.richIntegrations !== false && (
-                                                                                    <EmbedCard style={{ marginTop: '8px' }}>
+                                                                                    <EmbedCard style={{ marginTop: shouldShowText ? '8px' : '0', borderRadius: shouldShowText ? '8px' : '0', borderBottom: 'none' }}>
                                                                                         <EmbedHeader>
                                                                                             {embedData.type === 'github' && (
                                                                                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg>
@@ -2615,9 +2793,21 @@ export default function Dashboard() {
                                                                                 )}
 
                                                                                 {isImageUrl(msg.content) && (
-                                                                                    <a href={msg.content} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px' }}>
-                                                                                        <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { maxWidth: '100%', width: '300px' } : {}} />
-                                                                                    </a>
+                                                                                    msg.content.startsWith('data:image/') ? (
+                                                                                        <div onClick={() => {
+                                                                                            if (activeTab === 'communities') {
+                                                                                                setCommunityTab('live coding');
+                                                                                            } else {
+                                                                                                setIsWhiteboardOpen(true);
+                                                                                            }
+                                                                                        }} title="Open Whiteboard" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', cursor: 'pointer' }}>
+                                                                                            <AttachmentImage src={msg.content} alt="Whiteboard design" style={isMediaMessage ? { maxWidth: '100%', width: '300px' } : {}} />
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <a href={msg.content} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px' }}>
+                                                                                            <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { maxWidth: '100%', width: '300px' } : {}} />
+                                                                                        </a>
+                                                                                    )
                                                                                 )}
 
                                                                                 {isAudioUrl(msg.content) && (
@@ -2662,7 +2852,8 @@ export default function Dashboard() {
                                                                     </form>
                                                                 )}
                                                             </ChatBubble>
-                                                        </ChatBubbleWrapper>
+                                                            </ChatBubbleWrapper>
+                                                        </div>
                                                     )
                                                 })}
                                                 <div ref={messagesEndRef} />
@@ -2671,61 +2862,97 @@ export default function Dashboard() {
 
                                     </MessageList>
 
-                                    <InputArea onSubmit={handleSendMessage} style={{ flexShrink: 0 }}>
-                                        <input
-                                            type="file"
-                                            ref={fileInputRef}
-                                            style={{ display: 'none' }}
-                                            onChange={handleFileSelect}
-                                            accept="image/*,.pdf,.doc,.docx"
-                                        />
-
-                                        <AttachButton
-                                            type="button"
-                                            title="Attach File"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            disabled={isUploading || isRecording}
-                                        >
-                                            {isUploading ? <Spinner /> : <PlusIcon />}
-                                        </AttachButton>
-
-                                        {isRecording ? (
-                                            <VoiceRecordingIndicator time={recordingTime} />
-                                        ) : (
-                                            <Input
-                                                ref={inputRef}
-                                                placeholder="Message..."
-                                                value={messageInput}
-                                                onChange={handleInputChange}
-                                                onKeyDown={handleKeyDown}
-                                                rows={1}
+                                    {isSelectingMessages ? (
+                                        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--colors-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--colors-surface)', flexShrink: 0 }}>
+                                            <span style={{ color: 'var(--colors-textMain)', fontWeight: '600' }}>Selection Mode Active</span>
+                                            <div style={{ display: 'flex', gap: '12px' }}>
+                                                <Button variant="outline" onClick={() => setIsSelectingMessages(false)} style={{ padding: '8px 16px', borderRadius: '8px' }}>Cancel</Button>
+                                                <Button variant="primary" style={{ backgroundColor: '#ef4444', border: 'none', padding: '8px 16px', borderRadius: '8px', color: '#fff' }} onClick={() => { setMessages([]); setIsSelectingMessages(false); showToast('Selected messages deleted'); }}>Delete Selected</Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <InputArea onSubmit={handleSendMessage} style={{ flexShrink: 0 }}>
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                style={{ display: 'none' }}
+                                                onChange={handleFileSelect}
+                                                accept="image/*,.pdf,.doc,.docx"
                                             />
-                                        )}
 
-                                        {messageInput.trim().length > 0 ? (
-                                            <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
-                                                <SendIcon />
-                                            </SendButton>
-                                        ) : (
-                                            <SendButton
+                                            <AttachButton
                                                 type="button"
-                                                title={isRecording ? "Stop Recording" : "Record Voice Note"}
-                                                onClick={isRecording ? stopRecording : startRecording}
-                                                disabled={isUploading}
-                                                style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                title="Attach File"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={isUploading || isRecording}
                                             >
-                                                {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
-                                            </SendButton>
-                                        )}
-                                    </InputArea>
+                                                {isUploading ? <Spinner /> : <PlusIcon />}
+                                            </AttachButton>
+
+                                            {isRecording ? (
+                                                <VoiceRecordingIndicator time={recordingTime} />
+                                            ) : (
+                                                <Input
+                                                    ref={inputRef}
+                                                    placeholder="Message..."
+                                                    value={messageInput}
+                                                    onChange={handleInputChange}
+                                                    onKeyDown={handleKeyDown}
+                                                    rows={1}
+                                                />
+                                            )}
+
+                                            {messageInput.trim().length > 0 ? (
+                                                <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
+                                                    <SendIcon />
+                                                </SendButton>
+                                            ) : (
+                                                <SendButton
+                                                    type="button"
+                                                    title={isRecording ? "Stop Recording" : "Record Voice Note"}
+                                                    onClick={isRecording ? stopRecording : startRecording}
+                                                    disabled={isUploading}
+                                                    style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                >
+                                                    {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
+                                                </SendButton>
+                                            )}
+                                        </InputArea>
+                                    )}
                                 </>
+                            ) : communityTab === 'live coding' ? (
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                                    <Whiteboard
+                                        socket={socket}
+                                        conversationId={activeConversationId}
+                                        mongoUserId={mongoUserId}
+                                        onClose={() => setCommunityTab('chat')}
+                                        onSendToChat={(dataUrl) => {
+                                            socket.emit('send_message', {
+                                                conversationId: activeConversationId,
+                                                senderId: mongoUserId,
+                                                content: dataUrl,
+                                                isCodeSnippet: false,
+                                                language: 'plaintext'
+                                            });
+                                            socket.emit('send_message', {
+                                                conversationId: activeConversationId,
+                                                senderId: mongoUserId,
+                                                content: "I made a new design in the whiteboard! Please open the whiteboard to edit it.",
+                                                isCodeSnippet: false,
+                                                language: 'plaintext'
+                                            });
+                                            setCommunityTab('chat');
+                                        }}
+                                        embedded={true}
+                                    />
+                                </div>
                             ) : (
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)' }}>
                                     <PlaceholderView
                                         icon={
-                                            communityTab === 'live coding' ? <Code2 size={64} /> :
-                                                communityTab === 'hackathons' ? <Users size={64} /> :
-                                                    <Monitor size={64} />
+                                            communityTab === 'hackathons' ? <Users size={64} /> :
+                                                <Monitor size={64} />
                                         }
                                         title={`${communityTab.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Space`}
                                         subtitle={`This dedicated space for community ${communityTab} is coming soon. Stay tuned!`}
@@ -2735,15 +2962,76 @@ export default function Dashboard() {
                         </div>
                 ) : (
                     <>
-                        {activeTab === 'settings' && <PlaceholderView icon={<Settings size={64} />} title="Settings" />}
-                        {activeTab === 'status' && (activeStatus ? <PlaceholderView icon={<CircleDashed size={64} />} title={`${activeStatus}`} subtitle="No current status updates to show." /> : <PlaceholderView icon={<CircleDashed size={64} />} title="Share statuses" subtitle="Share photos, videos and text that disappear after 24 hours." />)}
-                        {activeTab === 'calls' && <PlaceholderView icon={<Phone size={64} />} title="Your Calls" subtitle="Start a voice or video call from any of your chats." />}
+                        {activeTab === 'settings' && (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '24px' }}>
+                                <div style={{ 
+                                    width: '100%', 
+                                    maxWidth: '600px', 
+                                    borderRadius: '24px', 
+                                    overflow: 'hidden', 
+                                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.1)',
+                                    position: 'relative'
+                                }}>
+                                    <img src="/settings-hero.jpg" alt="Settings Configuration" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '32px', background: 'linear-gradient(to top, rgba(11, 20, 26, 0.9), transparent)' }}>
+                                        <h2 style={{ margin: 0, fontSize: '2rem', fontWeight: '700', color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>System Preferences</h2>
+                                        <p style={{ margin: '8px 0 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '1.1rem' }}>Configure your workspace and tailor the DevSup experience.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'status' && (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', overflow: 'hidden', position: 'relative' }}>
+                                <div style={{ position: 'absolute', width: '400px', height: '400px', borderRadius: '50%', background: 'var(--colors-accent)', filter: 'blur(200px)', opacity: 0.15, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                                <div style={{ 
+                                    width: '140px', height: '140px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(6,182,212,0.2) 0%, rgba(6,182,212,0.05) 100%)', 
+                                    border: '1px solid rgba(6,182,212,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '32px', 
+                                    boxShadow: '0 0 40px rgba(6,182,212,0.15), inset 0 0 20px rgba(6,182,212,0.1)', position: 'relative', zIndex: 1
+                                }}>
+                                    <CircleDashed size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
+                                </div>
+                                <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{activeStatus ? activeStatus : 'Share statuses'}</h2>
+                                <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
+                                    {activeStatus ? 'No current status updates to show.' : 'Share photos, videos and text that disappear after 24 hours.'}
+                                </p>
+                            </div>
+                        )}
+                        {activeTab === 'calls' && (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', overflow: 'hidden', position: 'relative' }}>
+                                <div style={{ position: 'absolute', width: '400px', height: '400px', borderRadius: '50%', background: 'var(--colors-accent)', filter: 'blur(200px)', opacity: 0.15, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                                <div style={{ 
+                                    width: '140px', height: '140px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(6,182,212,0.2) 0%, rgba(6,182,212,0.05) 100%)', 
+                                    border: '1px solid rgba(6,182,212,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '32px', 
+                                    boxShadow: '0 0 40px rgba(6,182,212,0.15), inset 0 0 20px rgba(6,182,212,0.1)', position: 'relative', zIndex: 1
+                                }}>
+                                    <Phone size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
+                                </div>
+                                <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Your Calls</h2>
+                                <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
+                                    Start a voice or video call from any of your chats.
+                                </p>
+                            </div>
+                        )}
                         {(activeTab === 'chats' || activeTab === 'communities') && (
-                            <PlaceholderView
-                                icon={activeTab === 'communities' ? <Users size={64} /> : <MessageSquare size={64} />}
-                                title={activeTab === 'communities' ? "Communities" : "Welcome to DevSup!"}
-                                subtitle={activeTab === 'communities' ? "Select a community or create a new one to get started." : "Click the + button in the sidebar to start a new conversation."}
-                            />
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', overflow: 'hidden', position: 'relative' }}>
+                                <div style={{ position: 'absolute', width: '400px', height: '400px', borderRadius: '50%', background: 'var(--colors-accent)', filter: 'blur(200px)', opacity: 0.15, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                                <div style={{ 
+                                    width: '140px', height: '140px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(6,182,212,0.2) 0%, rgba(6,182,212,0.05) 100%)', 
+                                    border: '1px solid rgba(6,182,212,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '32px', 
+                                    boxShadow: '0 0 40px rgba(6,182,212,0.15), inset 0 0 20px rgba(6,182,212,0.1)', position: 'relative', zIndex: 1
+                                }}>
+                                    {activeTab === 'communities' ? 
+                                        <Users size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} /> : 
+                                        <MessageSquare size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
+                                    }
+                                </div>
+                                <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+                                    {activeTab === 'communities' ? "Communities" : "Welcome to DevSup!"}
+                                </h2>
+                                <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
+                                    {activeTab === 'communities' ? "Select a community or create a new one to get started." : "Click the + button in the sidebar to start a new conversation."}
+                                </p>
+                            </div>
                         )}
                     </>
                 )}
@@ -2885,7 +3173,7 @@ export default function Dashboard() {
 
                         <div style={{ height: '8px', backgroundColor: 'var(--colors-bg)' }}></div>
 
-                        {activeConversation.type === 'group' && activeConversation.admins?.includes(mongoUserId) && (
+                        {activeConversation.type === 'group' && (activeConversation.admins?.includes(mongoUserId) || (!activeConversation.admins?.length && activeConversation.participants?.[0]?._id === mongoUserId)) && (
                             <>
                                 <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div style={{ color: 'var(--colors-accent)', fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Group Settings</div>
@@ -2968,64 +3256,100 @@ export default function Dashboard() {
                 <Whiteboard
                     socket={socket}
                     conversationId={activeConversationId}
+                    mongoUserId={mongoUserId}
                     onClose={() => setIsWhiteboardOpen(false)}
+                    onSendToChat={(dataUrl) => {
+                        socket.emit('send_message', {
+                            conversationId: activeConversationId,
+                            senderId: mongoUserId,
+                            content: dataUrl,
+                            isCodeSnippet: false,
+                            language: 'plaintext'
+                        });
+                        socket.emit('send_message', {
+                            conversationId: activeConversationId,
+                            senderId: mongoUserId,
+                            content: "I made a new design in the whiteboard! Please open the whiteboard to edit it.",
+                            isCodeSnippet: false,
+                            language: 'plaintext'
+                        });
+                        setIsWhiteboardOpen(false);
+                    }}
                 />
             )}
 
             {/* Create Conversation Modal */}
             {isModalOpen && (
                 <ModalOverlay onClick={() => setIsModalOpen(false)}>
-                    <ModalContent onClick={e => e.stopPropagation()}>
-                        <ModalTitle style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {activeTab === 'communities' ? 'Create Community' : 'New Conversation'}
-                            <IconButton onClick={() => { setIsModalOpen(false); setUserSearchQuery(''); }}>✕</IconButton>
-                        </ModalTitle>
+                    <ModalContent onClick={e => e.stopPropagation()} style={{ 
+                        gap: '24px', 
+                        padding: '32px', 
+                        maxWidth: '440px', 
+                        borderRadius: '24px', 
+                        backgroundColor: 'var(--colors-surface)',
+                        border: '1px solid var(--colors-border)',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: '800', color: 'var(--colors-textMain)' }}>
+                                    {activeTab === 'communities' ? 'Create Community' : 'New Conversation'}
+                                </h2>
+                                <span style={{ fontSize: '0.85rem', color: 'var(--colors-accent)', fontWeight: '600' }}>
+                                    {activeTab === 'communities' ? 'Start a new hub' : (convType === 'direct' ? 'Start a direct chat' : 'Start a group chat')}
+                                </span>
+                            </div>
+                            <IconButton onClick={() => { setIsModalOpen(false); setUserSearchQuery(''); }} style={{ backgroundColor: 'var(--colors-bg)', border: '1px solid var(--colors-border)', width: '36px', height: '36px', borderRadius: '50%', color: 'var(--colors-textMuted)', transition: 'all 0.2s ease' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--colors-textMain)'; e.currentTarget.style.borderColor = 'var(--colors-textMuted)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--colors-textMuted)'; e.currentTarget.style.borderColor = 'var(--colors-border)'; }}>
+                                <X size={18} />
+                            </IconButton>
+                        </div>
 
                         {activeTab !== 'communities' && (
-                            <FormGroup>
-                                <Label>Type</Label>
-                                <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: 'var(--colors-bg)', border: '1px solid var(--colors-border)', borderRadius: '8px' }}>
-                                    <div
-                                        onClick={() => { setConvType('direct'); setSelectedUsers([]); }}
-                                        style={{ flex: 1, padding: '8px', textAlign: 'center', cursor: 'pointer', borderRadius: '6px', backgroundColor: convType === 'direct' ? 'var(--colors-surface)' : 'transparent', color: convType === 'direct' ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', border: convType === 'direct' ? '1px solid var(--colors-border)' : '1px solid transparent', transition: 'all 0.2s', fontWeight: convType === 'direct' ? '600' : 'normal', boxShadow: convType === 'direct' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}
-                                    >
-                                        Direct Message
-                                    </div>
-                                    <div
-                                        onClick={() => { setConvType('group'); setSelectedUsers([]); }}
-                                        style={{ flex: 1, padding: '8px', textAlign: 'center', cursor: 'pointer', borderRadius: '6px', backgroundColor: convType === 'group' ? 'var(--colors-surface)' : 'transparent', color: convType === 'group' ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', border: convType === 'group' ? '1px solid var(--colors-border)' : '1px solid transparent', transition: 'all 0.2s', fontWeight: convType === 'group' ? '600' : 'normal', boxShadow: convType === 'group' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}
-                                    >
-                                        Group Channel
-                                    </div>
+                            <div style={{ display: 'flex', gap: '8px', padding: '6px', backgroundColor: 'var(--colors-bg)', border: '1px solid var(--colors-border)', borderRadius: '12px' }}>
+                                <div
+                                    onClick={() => { setConvType('direct'); setSelectedUsers([]); }}
+                                    style={{ flex: 1, padding: '10px', textAlign: 'center', cursor: 'pointer', borderRadius: '8px', backgroundColor: convType === 'direct' ? 'var(--colors-surface)' : 'transparent', color: convType === 'direct' ? 'var(--colors-accent)' : 'var(--colors-textMuted)', border: convType === 'direct' ? '1px solid var(--colors-border)' : '1px solid transparent', transition: 'all 0.2s ease', fontWeight: convType === 'direct' ? '600' : '500', boxShadow: convType === 'direct' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}
+                                >
+                                    Direct Message
                                 </div>
-                            </FormGroup>
+                                <div
+                                    onClick={() => { setConvType('group'); setSelectedUsers([]); }}
+                                    style={{ flex: 1, padding: '10px', textAlign: 'center', cursor: 'pointer', borderRadius: '8px', backgroundColor: convType === 'group' ? 'var(--colors-surface)' : 'transparent', color: convType === 'group' ? 'var(--colors-accent)' : 'var(--colors-textMuted)', border: convType === 'group' ? '1px solid var(--colors-border)' : '1px solid transparent', transition: 'all 0.2s ease', fontWeight: convType === 'group' ? '600' : '500', boxShadow: convType === 'group' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}
+                                >
+                                    Group Channel
+                                </div>
+                            </div>
                         )}
 
                         {convType === 'group' && (
-                            <>
-                                <FormGroup>
-                                    <Label>{activeTab === 'communities' ? 'Community Name' : 'Group Name'}</Label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div>
+                                    <Label style={{ marginBottom: '8px', display: 'block', fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>{activeTab === 'communities' ? 'Community Name' : 'Group Name'}</Label>
                                     <ModalInput
                                         placeholder={activeTab === 'communities' ? "e.g. Open Source Contributors" : "e.g. Project Alpha"}
                                         value={convName}
                                         onChange={e => setConvName(e.target.value)}
-                                        style={{ padding: '12px', borderRadius: '8px' }}
+                                        style={{ padding: '14px', borderRadius: '12px', border: '1px solid var(--colors-border)', backgroundColor: 'var(--colors-bg)', color: 'var(--colors-textMain)', transition: 'all 0.3s ease' }}
+                                        onFocus={(e) => { e.target.style.borderColor = 'var(--colors-accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.15)'; }}
+                                        onBlur={(e) => { e.target.style.borderColor = 'var(--colors-border)'; e.target.style.boxShadow = 'none'; }}
                                     />
-                                </FormGroup>
-                                <FormGroup>
-                                    <Label>Description (optional)</Label>
+                                </div>
+                                <div>
+                                    <Label style={{ marginBottom: '8px', display: 'block', fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>Description <span style={{fontSize: '0.8rem', opacity: 0.7}}>(optional)</span></Label>
                                     <ModalInput
                                         placeholder="What is this group about?"
                                         value={convDescription}
                                         onChange={e => setConvDescription(e.target.value)}
-                                        style={{ padding: '12px', borderRadius: '8px' }}
+                                        style={{ padding: '14px', borderRadius: '12px', border: '1px solid var(--colors-border)', backgroundColor: 'var(--colors-bg)', color: 'var(--colors-textMain)', transition: 'all 0.3s ease' }}
+                                        onFocus={(e) => { e.target.style.borderColor = 'var(--colors-accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.15)'; }}
+                                        onBlur={(e) => { e.target.style.borderColor = 'var(--colors-border)'; e.target.style.boxShadow = 'none'; }}
                                     />
-                                </FormGroup>
-                                <FormGroup>
-                                    <Label>Group Image (optional)</Label>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
+                                </div>
+                                <div>
+                                    <Label style={{ marginBottom: '8px', display: 'block', fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>Group Image <span style={{fontSize: '0.8rem', opacity: 0.7}}>(optional)</span></Label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                                         {convAvatarUrl && (
-                                            <img src={convAvatarUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                                            <img src={convAvatarUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--colors-accent)' }} />
                                         )}
                                         <input
                                             type="file"
@@ -3037,19 +3361,57 @@ export default function Dashboard() {
                                             style={{ color: 'var(--colors-textMuted)', fontSize: '0.9rem' }}
                                         />
                                     </div>
-                                </FormGroup>
-                            </>
+                                </div>
+                            </div>
                         )}
 
-                        <FormGroup>
-                            <Label>Select User(s) {convType === 'group' ? <span style={{fontSize: '0.8rem', color: 'var(--colors-accent)'}}>(Your Contacts)</span> : ''}</Label>
-                            <ModalInput
-                                placeholder="Search by name..."
-                                value={userSearchQuery}
-                                onChange={e => setUserSearchQuery(e.target.value)}
-                                style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '8px' }}
-                            />
-                            <UserList style={{ border: '1px solid var(--colors-border)', borderRadius: '8px', backgroundColor: 'var(--colors-bg)', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Label style={{ margin: 0, fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>Select User(s)</Label>
+                                {convType === 'group' && <span style={{fontSize: '0.8rem', color: 'var(--colors-accent)', fontWeight: '600'}}>Your Contacts</span>}
+                            </div>
+                            
+                            <div style={{ position: 'relative' }}>
+                                <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--colors-textMuted)', pointerEvents: 'none', transition: 'color 0.3s ease' }} id="new-conv-search-icon">
+                                    <Search size={18} />
+                                </div>
+                                <ModalInput
+                                    placeholder="Search by name..."
+                                    value={userSearchQuery}
+                                    onChange={e => setUserSearchQuery(e.target.value)}
+                                    style={{ 
+                                        padding: '16px 16px 16px 44px', 
+                                        borderRadius: '16px', 
+                                        border: '1px solid var(--colors-border)', 
+                                        backgroundColor: 'var(--colors-bg)', 
+                                        fontSize: '0.95rem',
+                                        color: 'var(--colors-textMain)',
+                                        transition: 'all 0.3s ease',
+                                    }}
+                                    onFocus={(e) => { 
+                                        e.target.style.borderColor = 'var(--colors-accent)'; 
+                                        e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.15)';
+                                        document.getElementById('new-conv-search-icon').style.color = 'var(--colors-accent)';
+                                    }}
+                                    onBlur={(e) => { 
+                                        e.target.style.borderColor = 'var(--colors-border)'; 
+                                        e.target.style.boxShadow = 'none';
+                                        document.getElementById('new-conv-search-icon').style.color = 'var(--colors-textMuted)';
+                                    }}
+                                />
+                            </div>
+
+                            <UserList style={{ 
+                                borderRadius: '16px', 
+                                backgroundColor: 'var(--colors-bg)', 
+                                border: '1px solid var(--colors-border)',
+                                overflowY: 'auto',
+                                overflowX: 'hidden',
+                                minHeight: '200px',
+                                maxHeight: convType === 'group' ? '200px' : '350px',
+                                padding: '8px 0',
+                                marginTop: '4px'
+                            }}>
                                 {(() => {
                                     let displayedUsers = allUsers;
                                     if (convType === 'group') {
@@ -3059,40 +3421,98 @@ export default function Dashboard() {
                                     const filtered = displayedUsers.filter(u => u.displayName?.toLowerCase().includes(userSearchQuery.toLowerCase()));
                                     
                                     if (filtered.length === 0) {
-                                        return <div style={{ padding: '16px', color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>{convType === 'group' ? 'No contacts found. Start a direct chat first!' : 'No users found.'}</div>;
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '180px', padding: '20px', gap: '16px' }}>
+                                                <div style={{ padding: '16px', borderRadius: '50%', backgroundColor: 'var(--colors-surface)', border: '1px solid var(--colors-border)' }}>
+                                                    <Users size={32} color="var(--colors-textMuted)" strokeWidth={1.5} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                    <div style={{ color: 'var(--colors-textMain)', fontSize: '1rem', fontWeight: 'bold' }}>{convType === 'group' ? 'No contacts found' : 'No users found'}</div>
+                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>{convType === 'group' ? 'Start a direct chat with someone first!' : 'Try searching for a different name'}</div>
+                                                </div>
+                                            </div>
+                                        );
                                     }
                                     
                                     return filtered.map(u => (
-                                        <UserListItem
+                                        <div
                                             key={u._id}
-                                            selected={selectedUsers.includes(u._id)}
                                             onClick={() => toggleUserSelection(u._id)}
-                                            style={{ padding: '12px 16px', borderBottom: '1px solid var(--colors-border)' }}
+                                            style={{ 
+                                                padding: '12px 16px', 
+                                                margin: '4px 12px',
+                                                borderRadius: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '14px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease',
+                                                backgroundColor: selectedUsers.includes(u._id) ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                                                border: '1px solid ' + (selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'transparent')
+                                            }}
+                                            onMouseEnter={(e) => { if (!selectedUsers.includes(u._id)) { e.currentTarget.style.backgroundColor = 'var(--colors-surface)'; e.currentTarget.style.borderColor = 'var(--colors-border)'; } }}
+                                            onMouseLeave={(e) => { if (!selectedUsers.includes(u._id)) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
                                         >
                                             <AvatarWrapper>
-                                                <Avatar src={u.avatarUrl} style={{ width: '32px', height: '32px' }} />
-                                                {activeUsers.includes(u._id) && <OnlineDot style={{ width: '8px', height: '8px', bottom: '0px', right: '0px' }} />}
+                                                <Avatar src={u.avatarUrl} style={{ width: '40px', height: '40px', border: selectedUsers.includes(u._id) ? '2px solid var(--colors-accent)' : '2px solid var(--colors-surface)' }} />
+                                                {activeUsers.includes(u._id) && <OnlineDot style={{ width: '12px', height: '12px', bottom: '-2px', right: '-2px', border: '2.5px solid var(--colors-bg)' }} />}
                                             </AvatarWrapper>
-                                            <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '500' }}>{u.displayName}</span>
-                                            {selectedUsers.includes(u._id) && (
-                                                <div style={{ marginLeft: 'auto', color: 'var(--colors-accent)' }}>
-                                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                                                </div>
-                                            )}
-                                        </UserListItem>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
+                                                <span style={{ color: selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>{u.techDiscipline || 'Fullstack'}</span>
+                                            </div>
+                                            
+                                            {/* DevSup Premium Checkbox */}
+                                            <div style={{ 
+                                                width: '22px', 
+                                                height: '22px', 
+                                                borderRadius: '6px', 
+                                                border: selectedUsers.includes(u._id) ? 'none' : '2px solid var(--colors-border)',
+                                                backgroundColor: selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-surface)',
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                boxShadow: selectedUsers.includes(u._id) ? '0 0 10px rgba(6, 182, 212, 0.5)' : 'none',
+                                                transform: selectedUsers.includes(u._id) ? 'scale(1.05)' : 'scale(1)'
+                                            }}>
+                                                {selectedUsers.includes(u._id) && (
+                                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'popIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}>
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        </div>
                                     ));
                                 })()}
                             </UserList>
-                        </FormGroup>
+                        </div>
 
                         <Button
                             variant="primary"
                             fullWidth
                             onClick={handleCreateConversation}
                             disabled={selectedUsers.length === 0 || (convType === 'group' && !convName)}
-                            style={{ padding: '14px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', marginTop: '8px' }}
+                            style={{ 
+                                padding: '16px', 
+                                borderRadius: '16px', 
+                                fontSize: '1.05rem', 
+                                fontWeight: '700', 
+                                marginTop: '4px',
+                                backgroundColor: selectedUsers.length > 0 && (convType === 'direct' || convName) ? 'var(--colors-accent)' : 'var(--colors-bg)',
+                                color: selectedUsers.length > 0 && (convType === 'direct' || convName) ? '#ffffff' : 'var(--colors-textMuted)',
+                                border: selectedUsers.length > 0 && (convType === 'direct' || convName) ? 'none' : '1px solid var(--colors-border)',
+                                cursor: selectedUsers.length === 0 || (convType === 'group' && !convName) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                boxShadow: selectedUsers.length > 0 && (convType === 'direct' || convName) ? '0 8px 25px -5px rgba(6, 182, 212, 0.5)' : 'none',
+                                transform: selectedUsers.length > 0 && (convType === 'direct' || convName) ? 'translateY(-2px)' : 'none'
+                            }}
+                            onMouseEnter={(e) => { if (selectedUsers.length > 0 && (convType === 'direct' || convName)) { e.currentTarget.style.backgroundColor = 'var(--colors-accentHover)'; e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 30px -5px rgba(6, 182, 212, 0.6)'; } }}
+                            onMouseLeave={(e) => { if (selectedUsers.length > 0 && (convType === 'direct' || convName)) { e.currentTarget.style.backgroundColor = 'var(--colors-accent)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 25px -5px rgba(6, 182, 212, 0.5)'; } }}
+                            onMouseDown={(e) => { if (selectedUsers.length > 0 && (convType === 'direct' || convName)) { e.currentTarget.style.transform = 'translateY(1px)'; e.currentTarget.style.boxShadow = '0 4px 15px -5px rgba(6, 182, 212, 0.4)'; } }}
+                            onMouseUp={(e) => { if (selectedUsers.length > 0 && (convType === 'direct' || convName)) { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 30px -5px rgba(6, 182, 212, 0.6)'; } }}
                         >
-                            {activeTab === 'communities' ? 'Create Community' : 'Start Chat'}
+                            {activeTab === 'communities' ? 'Create Community' : (convType === 'group' ? 'Start Group Chat' : 'Start Direct Chat')}
                         </Button>
                     </ModalContent>
                 </ModalOverlay>
@@ -3101,67 +3521,168 @@ export default function Dashboard() {
             {/* Add Members Modal */}
             {isAddMembersModalOpen && activeConversation?.type === 'group' && (
                 <ModalOverlay onClick={() => setIsAddMembersModalOpen(false)}>
-                    <ModalContent onClick={e => e.stopPropagation()}>
-                        <ModalTitle>
-                            Add Members
-                            <IconButton onClick={() => setIsAddMembersModalOpen(false)}>✕</IconButton>
-                        </ModalTitle>
+                    <ModalContent onClick={e => e.stopPropagation()} style={{ 
+                        gap: '24px', 
+                        padding: '32px', 
+                        maxWidth: '440px', 
+                        borderRadius: '24px', 
+                        backgroundColor: 'var(--colors-surface)',
+                        border: '1px solid var(--colors-border)',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: '800', color: 'var(--colors-textMain)' }}>Add Members</h2>
+                                <span style={{ fontSize: '0.85rem', color: 'var(--colors-accent)', fontWeight: '600' }}>Expand your group</span>
+                            </div>
+                            <IconButton onClick={() => setIsAddMembersModalOpen(false)} style={{ backgroundColor: 'var(--colors-bg)', border: '1px solid var(--colors-border)', width: '36px', height: '36px', borderRadius: '50%', color: 'var(--colors-textMuted)', transition: 'all 0.2s ease' }} onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--colors-textMain)'; e.currentTarget.style.borderColor = 'var(--colors-textMuted)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--colors-textMuted)'; e.currentTarget.style.borderColor = 'var(--colors-border)'; }}>
+                                <X size={18} />
+                            </IconButton>
+                        </div>
 
-                        <FormGroup>
-                            <Label>Select Contacts to Add</Label>
+                        <div style={{ position: 'relative' }}>
+                            <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--colors-textMuted)', pointerEvents: 'none', transition: 'color 0.3s ease' }} id="add-members-search-icon">
+                                <Search size={18} />
+                            </div>
                             <ModalInput
-                                placeholder="Search contacts..."
+                                placeholder="Search by name..."
                                 value={addMembersSearchQuery}
                                 onChange={e => setAddMembersSearchQuery(e.target.value)}
-                                style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '8px' }}
+                                style={{ 
+                                    padding: '16px 16px 16px 44px', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid var(--colors-border)', 
+                                    backgroundColor: 'var(--colors-bg)', 
+                                    fontSize: '0.95rem',
+                                    color: 'var(--colors-textMain)',
+                                    transition: 'all 0.3s ease',
+                                }}
+                                onFocus={(e) => { 
+                                    e.target.style.borderColor = 'var(--colors-accent)'; 
+                                    e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.15)';
+                                    document.getElementById('add-members-search-icon').style.color = 'var(--colors-accent)';
+                                }}
+                                onBlur={(e) => { 
+                                    e.target.style.borderColor = 'var(--colors-border)'; 
+                                    e.target.style.boxShadow = 'none';
+                                    document.getElementById('add-members-search-icon').style.color = 'var(--colors-textMuted)';
+                                }}
                             />
-                            <UserList style={{ border: '1px solid var(--colors-border)', borderRadius: '8px', backgroundColor: 'var(--colors-bg)', overflow: 'hidden' }}>
-                                {(() => {
-                                    const contactIds = [...new Set(conversations.filter(c => c.type === 'direct').flatMap(c => c.participants.map(p => p?._id)).filter(id => id && id !== mongoUserId))];
-                                    const existingMemberIds = activeConversation.participants?.map(p => p._id) || [];
-                                    
-                                    const availableContacts = allUsers.filter(u => contactIds.includes(u._id) && !existingMemberIds.includes(u._id));
-                                    const filtered = availableContacts.filter(u => u.displayName?.toLowerCase().includes(addMembersSearchQuery.toLowerCase()));
-                                    
-                                    if (filtered.length === 0) {
-                                        return <div style={{ padding: '16px', color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>No available contacts to add.</div>;
-                                    }
-                                    
-                                    return filtered.map(u => (
-                                        <UserListItem
-                                            key={u._id}
-                                            selected={selectedMembersToAdd.includes(u._id)}
-                                            onClick={() => {
-                                                setSelectedMembersToAdd(prev => 
-                                                    prev.includes(u._id) ? prev.filter(id => id !== u._id) : [...prev, u._id]
-                                                );
-                                            }}
-                                            style={{ padding: '12px 16px', borderBottom: '1px solid var(--colors-border)' }}
-                                        >
-                                            <AvatarWrapper>
-                                                <Avatar src={u.avatarUrl} style={{ width: '32px', height: '32px' }} />
-                                                {activeUsers.includes(u._id) && <OnlineDot style={{ width: '8px', height: '8px', bottom: '0px', right: '0px' }} />}
-                                            </AvatarWrapper>
-                                            <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '500' }}>{u.displayName}</span>
+                        </div>
+
+                        <UserList style={{ 
+                            borderRadius: '16px', 
+                            backgroundColor: 'var(--colors-bg)', 
+                            border: '1px solid var(--colors-border)',
+                            overflowY: 'auto',
+                            overflowX: 'hidden',
+                            minHeight: '240px',
+                            maxHeight: '350px',
+                            padding: '8px 0',
+                        }}>
+                            {(() => {
+                                const contactIds = [...new Set(conversations.filter(c => c.type === 'direct').flatMap(c => c.participants.map(p => p?._id)).filter(id => id && id !== mongoUserId))];
+                                const existingMemberIds = activeConversation.participants?.map(p => p._id) || [];
+                                
+                                const availableContacts = allUsers.filter(u => contactIds.includes(u._id) && !existingMemberIds.includes(u._id));
+                                const filtered = availableContacts.filter(u => u.displayName?.toLowerCase().includes(addMembersSearchQuery.toLowerCase()));
+                                
+                                if (filtered.length === 0) {
+                                    return (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '220px', padding: '40px 20px', gap: '16px' }}>
+                                            <div style={{ padding: '16px', borderRadius: '50%', backgroundColor: 'var(--colors-surface)', border: '1px solid var(--colors-border)' }}>
+                                                <Users size={36} color="var(--colors-textMuted)" strokeWidth={1.5} />
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                <div style={{ color: 'var(--colors-textMain)', fontSize: '1.05rem', fontWeight: 'bold' }}>No contacts found</div>
+                                                <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>Try searching for a different name</div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                
+                                return filtered.map(u => (
+                                    <div
+                                        key={u._id}
+                                        onClick={() => {
+                                            setSelectedMembersToAdd(prev => 
+                                                prev.includes(u._id) ? prev.filter(id => id !== u._id) : [...prev, u._id]
+                                            );
+                                        }}
+                                        style={{ 
+                                            padding: '12px 16px', 
+                                            margin: '4px 12px',
+                                            borderRadius: '12px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '14px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease',
+                                            backgroundColor: selectedMembersToAdd.includes(u._id) ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                                            border: '1px solid ' + (selectedMembersToAdd.includes(u._id) ? 'var(--colors-accent)' : 'transparent')
+                                        }}
+                                        onMouseEnter={(e) => { if (!selectedMembersToAdd.includes(u._id)) { e.currentTarget.style.backgroundColor = 'var(--colors-surface)'; e.currentTarget.style.borderColor = 'var(--colors-border)'; } }}
+                                        onMouseLeave={(e) => { if (!selectedMembersToAdd.includes(u._id)) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
+                                    >
+                                        <AvatarWrapper>
+                                            <Avatar src={u.avatarUrl} style={{ width: '40px', height: '40px', border: selectedMembersToAdd.includes(u._id) ? '2px solid var(--colors-accent)' : '2px solid var(--colors-surface)' }} />
+                                            {activeUsers.includes(u._id) && <OnlineDot style={{ width: '12px', height: '12px', bottom: '-2px', right: '-2px', border: '2.5px solid var(--colors-bg)' }} />}
+                                        </AvatarWrapper>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                                            <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
+                                            <span style={{ color: selectedMembersToAdd.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>{u.techDiscipline || 'Fullstack'}</span>
+                                        </div>
+                                        
+                                        {/* DevSup Premium Checkbox */}
+                                        <div style={{ 
+                                            width: '22px', 
+                                            height: '22px', 
+                                            borderRadius: '6px', 
+                                            border: selectedMembersToAdd.includes(u._id) ? 'none' : '2px solid var(--colors-border)',
+                                            backgroundColor: selectedMembersToAdd.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-surface)',
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            boxShadow: selectedMembersToAdd.includes(u._id) ? '0 0 10px rgba(6, 182, 212, 0.5)' : 'none',
+                                            transform: selectedMembersToAdd.includes(u._id) ? 'scale(1.05)' : 'scale(1)'
+                                        }}>
                                             {selectedMembersToAdd.includes(u._id) && (
-                                                <div style={{ marginLeft: 'auto', color: 'var(--colors-accent)' }}>
-                                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                                                </div>
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'popIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}>
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
                                             )}
-                                        </UserListItem>
-                                    ));
-                                })()}
-                            </UserList>
-                        </FormGroup>
+                                        </div>
+                                    </div>
+                                ));
+                            })()}
+                        </UserList>
 
                         <Button
                             variant="primary"
                             fullWidth
                             onClick={handleAddMembersToGroup}
                             disabled={selectedMembersToAdd.length === 0}
-                            style={{ padding: '14px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', marginTop: '8px' }}
+                            style={{ 
+                                padding: '16px', 
+                                borderRadius: '16px', 
+                                fontSize: '1.05rem', 
+                                fontWeight: '700', 
+                                marginTop: '4px',
+                                backgroundColor: selectedMembersToAdd.length > 0 ? 'var(--colors-accent)' : 'var(--colors-bg)',
+                                color: selectedMembersToAdd.length > 0 ? '#ffffff' : 'var(--colors-textMuted)',
+                                border: selectedMembersToAdd.length > 0 ? 'none' : '1px solid var(--colors-border)',
+                                cursor: selectedMembersToAdd.length === 0 ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                boxShadow: selectedMembersToAdd.length > 0 ? '0 8px 25px -5px rgba(6, 182, 212, 0.5)' : 'none',
+                                transform: selectedMembersToAdd.length > 0 ? 'translateY(-2px)' : 'none'
+                            }}
+                            onMouseEnter={(e) => { if (selectedMembersToAdd.length > 0) { e.currentTarget.style.backgroundColor = 'var(--colors-accentHover)'; e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 30px -5px rgba(6, 182, 212, 0.6)'; } }}
+                            onMouseLeave={(e) => { if (selectedMembersToAdd.length > 0) { e.currentTarget.style.backgroundColor = 'var(--colors-accent)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 25px -5px rgba(6, 182, 212, 0.5)'; } }}
+                            onMouseDown={(e) => { if (selectedMembersToAdd.length > 0) { e.currentTarget.style.transform = 'translateY(1px)'; e.currentTarget.style.boxShadow = '0 4px 15px -5px rgba(6, 182, 212, 0.4)'; } }}
+                            onMouseUp={(e) => { if (selectedMembersToAdd.length > 0) { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 30px -5px rgba(6, 182, 212, 0.6)'; } }}
                         >
-                            Add to Group
+                            {selectedMembersToAdd.length > 0 ? `Add ${selectedMembersToAdd.length} Member${selectedMembersToAdd.length !== 1 ? 's' : ''}` : 'Add Members'}
                         </Button>
                     </ModalContent>
                 </ModalOverlay>
@@ -3367,6 +3888,83 @@ export default function Dashboard() {
                         </>
                     )}
                 </ContextMenuContainer>
+            )}
+
+            {/* Premium Feature Placeholder Modal */}
+            {premiumModal && (
+                <ModalOverlay onClick={() => setPremiumModal(null)} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
+                    <ModalContent onClick={e => e.stopPropagation()} style={{ 
+                        maxWidth: '420px', 
+                        padding: '40px 32px', 
+                        alignItems: 'center', 
+                        gap: '16px',
+                        background: 'linear-gradient(180deg, var(--colors-surface) 0%, rgba(17, 24, 39, 0.95) 100%)',
+                        border: '1px solid rgba(6, 182, 212, 0.2)',
+                        boxShadow: '0 25px 50px -12px rgba(6, 182, 212, 0.25), 0 0 0 1px rgba(6, 182, 212, 0.1)',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', background: 'var(--colors-accent)', filter: 'blur(100px)', opacity: 0.15, borderRadius: '50%' }} />
+
+                        <div style={{ 
+                            width: '80px', height: '80px', borderRadius: '50%', 
+                            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(6, 182, 212, 0.05) 100%)', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--colors-accent)', 
+                            marginBottom: '8px',
+                            border: '1px solid rgba(6, 182, 212, 0.3)',
+                            boxShadow: '0 0 30px rgba(6, 182, 212, 0.2), inset 0 0 15px rgba(6, 182, 212, 0.1)',
+                            position: 'relative', zIndex: 1
+                        }}>
+                            {premiumModal.type === 'hackathon' ? <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> : <img src="/favicon.svg" alt="DevSup Logo" style={{ width: '40px', height: '40px', filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.5))' }} />}
+                        </div>
+                        <h2 style={{ fontSize: '1.8rem', fontWeight: '500', color: 'var(--colors-textMain)', margin: 0, letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textAlign: 'center' }}>{premiumModal.title}</h2>
+                        <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.05rem', textAlign: 'center', margin: '0 0 24px 0', lineHeight: 1.6, position: 'relative', zIndex: 1 }}>
+                            {premiumModal.subtitle}
+                        </p>
+                        <div style={{ display: 'flex', gap: '16px', width: '100%', position: 'relative', zIndex: 1 }}>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setPremiumModal(null)}
+                                style={{ flex: 1, padding: '14px', borderRadius: '12px', fontWeight: '500', fontSize: '1rem', border: '1px solid var(--colors-border)', backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--colors-textMain)' }}
+                            >
+                                Not Now
+                            </Button>
+                            <Button 
+                                variant="primary" 
+                                onClick={() => { setPremiumModal(null); showToast('Joined waitlist!'); }}
+                                style={{ flex: 1, padding: '14px', borderRadius: '12px', background: 'linear-gradient(135deg, var(--colors-accent) 0%, #0891b2 100%)', color: '#fff', border: 'none', fontWeight: '500', fontSize: '1rem', boxShadow: '0 4px 14px rgba(6, 182, 212, 0.4)' }}
+                            >
+                                Join Waitlist
+                            </Button>
+                        </div>
+                    </ModalContent>
+                </ModalOverlay>
+            )}
+
+            {/* Toast Notification */}
+            {toastMessage && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '32px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'var(--colors-surface)',
+                    border: '1px solid var(--colors-border)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(6, 182, 212, 0.3)',
+                    color: 'var(--colors-textMain)',
+                    padding: '14px 24px',
+                    borderRadius: '50px',
+                    zIndex: 10000,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    fontSize: '1rem',
+                    fontWeight: '500',
+                    animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--colors-accent)', boxShadow: '0 0 8px var(--colors-accent)' }} />
+                    {toastMessage}
+                </div>
             )}
 
             {/* Logout Confirmation Modal */}

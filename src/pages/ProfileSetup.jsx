@@ -161,6 +161,10 @@ const Select = styled('select', {
   '&:focus': {
     borderColor: '$accent',
     boxShadow: '0 0 0 2px rgba(6, 182, 212, 0.2)'
+  },
+  '& option': {
+      backgroundColor: '#0F172A',
+      color: 'white'
   }
 });
 

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { styled } from '../stitches.config.js';
-import { X, Brush, Eraser, Trash2, Undo2, Redo2, ChevronDown, ChevronRight, Square, ArrowUpToLine, ArrowDownToLine, Send } from 'lucide-react';
+import { X, Brush, Eraser, Trash2, Undo2, Redo2, ChevronDown, ChevronRight, Square, ArrowUpToLine, ArrowDownToLine, Send, Lock, Unlock } from 'lucide-react';
 import { MOCKUP_TYPES, MOCKUP_CATEGORIES } from './MockupComponents';
 import html2canvas from 'html2canvas';
 
@@ -14,6 +14,18 @@ const WhiteboardOverlay = styled('div', {
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
+    variants: {
+        embedded: {
+            true: {
+                position: 'relative',
+                zIndex: 1,
+                backgroundColor: 'transparent',
+                flex: 1,
+                height: '100%',
+                width: '100%',
+            }
+        }
+    }
 });
 
 const Toolbar = styled('div', {
@@ -135,15 +147,27 @@ const SidebarItem = styled('div', {
 const CanvasContainer = styled('div', {
     flex: 1,
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'auto',
     cursor: 'crosshair',
 });
 
+const CanvasInner = styled('div', {
+    position: 'relative',
+    width: '4000px',
+    height: '4000px',
+});
 
-export default function Whiteboard({ socket, conversationId, onClose, onSendToChat }) {
+
+export default function Whiteboard({ socket, conversationId, mongoUserId, onClose, onSendToChat, embedded = false }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
+    
+    const canEditElement = (el) => {
+        if (!el.ownerId) return true;
+        if (el.ownerId === mongoUserId) return true;
+        return el.allowOthersToEdit;
+    };
     
     const [color, setColor] = useState('#06B6D4');
     const [bgColor, setBgColor] = useState('transparent');
@@ -153,7 +177,19 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
     const [history, setHistory] = useState([]);
     const [historyStep, setHistoryStep] = useState(-1);
 
-    const [droppedElements, setDroppedElements] = useState([]);
+    const [droppedElements, setDroppedElements] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`whiteboard_elements_${conversationId}`);
+            if (saved) return JSON.parse(saved);
+        } catch (e) {
+            console.error(e);
+        }
+        return [];
+    });
+    
+    useEffect(() => {
+        localStorage.setItem(`whiteboard_elements_${conversationId}`, JSON.stringify(droppedElements));
+    }, [droppedElements, conversationId]);
     const [draggedItem, setDraggedItem] = useState(null);
     const [draggingElementId, setDraggingElementId] = useState(null);
     
@@ -241,6 +277,13 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
         setHistoryStep(newHistory.length - 1);
     };
 
+    // Request sync on mount
+    useEffect(() => {
+        if (socket && conversationId) {
+            socket.emit('whiteboard_draw', { conversationId, action: 'request_sync' });
+        }
+    }, [socket, conversationId]);
+
     // Initialize empty history state for undo/redo tracking properly
     useEffect(() => {
         saveState();
@@ -283,6 +326,13 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 setHistory([]);
                 setHistoryStep(-1);
+                return;
+            }
+
+            if (data.action === 'request_sync') {
+                if (droppedElements.length > 0) {
+                    socket.emit('whiteboard_draw', { conversationId, action: 'sync_elements', elements: droppedElements });
+                }
                 return;
             }
 
@@ -467,17 +517,54 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
             setSelectedElements([]);
             setContextMenu(null);
             
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 100)); // Wait for re-render
             
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            if (droppedElements.length > 0) {
+                droppedElements.forEach(el => {
+                    if (el.x < minX) minX = el.x;
+                    if (el.y < minY) minY = el.y;
+                    if (el.x + el.w > maxX) maxX = el.x + el.w;
+                    if (el.y + el.h > maxY) maxY = el.y + el.h;
+                });
+            } else {
+                minX = 0; minY = 0; maxX = window.innerWidth; maxY = window.innerHeight;
+            }
+            
+            const padding = 50;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX += padding;
+            maxY += padding;
+            
+            const w = maxX - minX;
+            const h = maxY - minY;
+            
+            const originalWidth = containerRef.current.style.width;
+            const originalHeight = containerRef.current.style.height;
+            containerRef.current.style.width = `${maxX}px`;
+            containerRef.current.style.height = `${maxY}px`;
+
             const canvas = await html2canvas(containerRef.current, {
                 backgroundColor: bgColor === 'transparent' ? '#0f172a' : bgColor,
-                useCORS: true
+                useCORS: true,
+                x: minX,
+                y: minY,
+                width: w,
+                height: h,
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight,
+                scale: 1 // prevent too large resolutions on retina displays
             });
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            
+            containerRef.current.style.width = originalWidth;
+            containerRef.current.style.height = originalHeight;
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
             onSendToChat(dataUrl);
         } catch (err) {
             console.error("Failed to export whiteboard:", err);
-            alert("Failed to export whiteboard as image.");
+            alert("Failed to export whiteboard as image. " + err.message);
         }
     };
 
@@ -516,6 +603,8 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
             y: clientY - rect.top - (MOCKUP_TYPES[type].defaultH / 2),
             w: MOCKUP_TYPES[type].defaultW,
             h: MOCKUP_TYPES[type].defaultH,
+            ownerId: mongoUserId,
+            allowOthersToEdit: false
         };
 
         const updatedElements = [...droppedElements, newElement];
@@ -541,7 +630,9 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                 y: touch.clientY - canvasRect.top - (MOCKUP_TYPES[type].defaultH / 2),
                 w: MOCKUP_TYPES[type].defaultW,
                 h: MOCKUP_TYPES[type].defaultH,
-                color: elementColor !== 'transparent' ? elementColor : undefined
+                color: elementColor !== 'transparent' ? elementColor : undefined,
+                ownerId: mongoUserId,
+                allowOthersToEdit: false
             };
             const updatedElements = [...droppedElements, newElement];
             setDroppedElements(updatedElements);
@@ -555,6 +646,8 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
     // For moving already dropped elements
     const handleElementMouseDown = (e, id) => {
         e.stopPropagation();
+        const el = droppedElements.find(el => el.id === id);
+        if (el && !canEditElement(el)) return;
         setDraggingElementId(id);
     };
 
@@ -634,6 +727,9 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
 
     const handleGroupMouseDown = (e) => {
         e.stopPropagation();
+        const hasUneditable = droppedElements.some(el => selectedElements.includes(el.id) && !canEditElement(el));
+        if (hasUneditable) return;
+        
         setIsGroupDragging(true);
         let clientX = e.clientX;
         let clientY = e.clientY;
@@ -646,6 +742,9 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
 
     const handleGroupResizeMouseDown = (e) => {
         e.stopPropagation();
+        const hasUneditable = droppedElements.some(el => selectedElements.includes(el.id) && !canEditElement(el));
+        if (hasUneditable) return;
+        
         setIsGroupResizing(true);
         let clientX = e.clientX;
         let clientY = e.clientY;
@@ -745,6 +844,7 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
 
     const handleResizeMouseDown = (e, el) => {
         e.stopPropagation();
+        if (!canEditElement(el)) return;
         setResizingElementId(el.id);
         
         let clientX = e.clientX;
@@ -789,7 +889,7 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
     };
 
     return (
-        <WhiteboardOverlay>
+        <WhiteboardOverlay embedded={embedded}>
             <Toolbar>
                 <ToolsGroup>
                     <IconButton 
@@ -951,13 +1051,13 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                     </div>
                 </Sidebar>
 
-                <CanvasContainer 
-                    ref={containerRef}
-                    style={{ backgroundColor: bgColor }}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                >
-                    {/* Render Alignment Lines */}
+                <CanvasContainer style={{ backgroundColor: bgColor }}>
+                    <CanvasInner 
+                        ref={containerRef}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                    >
+                        {/* Render Alignment Lines */}
                     {alignmentLines.v !== null && (
                         <div style={{ position: 'absolute', top: 0, bottom: 0, left: alignmentLines.v, width: '1px', backgroundColor: '#d946ef', zIndex: 9999, pointerEvents: 'none' }} />
                     )}
@@ -1059,6 +1159,40 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                                             display: 'flex', gap: '8px',
                                         }}
                                     >
+                                        {selectedElements.every(id => droppedElements.find(el => el.id === id)?.ownerId === mongoUserId) && (
+                                            <div
+                                                title={droppedElements.find(el => el.id === selectedElements[0])?.allowOthersToEdit ? "Revoke edit permission from group" : "Allow others to edit"}
+                                                style={{
+                                                    padding: '6px', backgroundColor: droppedElements.find(el => el.id === selectedElements[0])?.allowOthersToEdit ? '#10B981' : '#ef4444', color: 'white', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const isCurrentlyAllowed = droppedElements.find(el => el.id === selectedElements[0])?.allowOthersToEdit;
+                                                    const updated = droppedElements.map(el => {
+                                                        if (selectedElements.includes(el.id) && el.ownerId === mongoUserId) {
+                                                            return { ...el, allowOthersToEdit: !isCurrentlyAllowed };
+                                                        }
+                                                        return el;
+                                                    });
+                                                    setDroppedElements(updated);
+                                                    if (socket && conversationId) socket.emit('whiteboard_draw', { conversationId, action: 'sync_elements', elements: updated });
+                                                }}
+                                                onTouchStart={(e) => {
+                                                    e.stopPropagation();
+                                                    const isCurrentlyAllowed = droppedElements.find(el => el.id === selectedElements[0])?.allowOthersToEdit;
+                                                    const updated = droppedElements.map(el => {
+                                                        if (selectedElements.includes(el.id) && el.ownerId === mongoUserId) {
+                                                            return { ...el, allowOthersToEdit: !isCurrentlyAllowed };
+                                                        }
+                                                        return el;
+                                                    });
+                                                    setDroppedElements(updated);
+                                                    if (socket && conversationId) socket.emit('whiteboard_draw', { conversationId, action: 'sync_elements', elements: updated });
+                                                }}
+                                            >
+                                                {droppedElements.find(el => el.id === selectedElements[0])?.allowOthersToEdit ? <Unlock size={16} /> : <Lock size={16} />}
+                                            </div>
+                                        )}
                                         <div
                                             title="Send to Back"
                                             style={{
@@ -1090,7 +1224,9 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                                                 ...el,
                                                 id: Date.now().toString() + Math.random(),
                                                 x: el.x + 20,
-                                                y: el.y + 20
+                                                y: el.y + 20,
+                                                ownerId: mongoUserId,
+                                                allowOthersToEdit: false
                                             }));
                                             const updated = [...droppedElements, ...newElements];
                                             setDroppedElements(updated);
@@ -1103,7 +1239,9 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                                                 ...el,
                                                 id: Date.now().toString() + Math.random(),
                                                 x: el.x + 20,
-                                                y: el.y + 20
+                                                y: el.y + 20,
+                                                ownerId: mongoUserId,
+                                                allowOthersToEdit: false
                                             }));
                                             const updated = [...droppedElements, ...newElements];
                                             setDroppedElements(updated);
@@ -1183,6 +1321,12 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     onClick={() => {
+                                        const hasUneditable = droppedElements.some(el => selectedElements.includes(el.id) && !canEditElement(el));
+                                        if (hasUneditable) {
+                                            alert("You don't have permission to delete one or more of these elements.");
+                                            setContextMenu(null);
+                                            return;
+                                        }
                                         const filtered = droppedElements.filter(el => !selectedElements.includes(el.id));
                                         setDroppedElements(filtered);
                                         setSelectedElements([]);
@@ -1197,6 +1341,7 @@ export default function Whiteboard({ socket, conversationId, onClose, onSendToCh
                             </div>
                         </>
                     )}
+                    </CanvasInner>
                 </CanvasContainer>
             </MainArea>
         </WhiteboardOverlay>

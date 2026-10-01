@@ -247,6 +247,7 @@ export default function Home() {
         <HomeContainer>
             <HeroSection>
                 <GlowBackground />
+                <img src="/logo.png" alt="DevSup Logo" style={{ width: '120px', height: '120px', marginBottom: '16px', zIndex: 1 }} />
                 <Title>Code Meets Conversation</Title>
                 <Subtitle>
                     DevSup is a developer-centric chat application engineered to bridge the gap between casual communication and heavy-duty technical collaboration. No more context switching.
