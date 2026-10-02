@@ -112,6 +112,7 @@ const NavRailItem = styled('button', {
 const AvatarWrapper = styled('div', {
     position: 'relative',
     display: 'inline-block',
+    borderRadius: '50%',
 });
 
 const Avatar = styled('img', {
