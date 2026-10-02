@@ -20,7 +20,16 @@ const LoadingContainer = styled('div', {
 });
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuth0();
+  const { isAuthenticated, isLoading, error } = useAuth0();
+
+  if (error) {
+    return (
+      <LoadingContainer style={{ color: '#EF4444', flexDirection: 'column', textAlign: 'center', padding: '20px' }}>
+        <div>Authentication Error</div>
+        <div style={{ fontSize: '1rem', marginTop: '10px', color: '#94A3B8' }}>{error.message}</div>
+      </LoadingContainer>
+    );
+  }
 
   if (isLoading) {
     return (

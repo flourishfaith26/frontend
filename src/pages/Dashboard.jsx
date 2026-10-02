@@ -13,6 +13,7 @@ import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Sea
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 import StoryViewer from '../components/StoryViewer';
 import StatusUploadModal from '../components/StatusUploadModal';
+import EventsView from '../components/EventsView';
 import { useNavigate } from 'react-router-dom';
 
 // --- Stitches Components ---
@@ -2948,16 +2949,7 @@ export default function Dashboard() {
                                     />
                                 </div>
                             ) : (
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)' }}>
-                                    <PlaceholderView
-                                        icon={
-                                            communityTab === 'hackathons' ? <Users size={64} /> :
-                                                <Monitor size={64} />
-                                        }
-                                        title={`${communityTab.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Space`}
-                                        subtitle={`This dedicated space for community ${communityTab} is coming soon. Stay tuned!`}
-                                    />
-                                </div>
+                                <EventsView type={communityTab} />
                             )}
                         </div>
                 ) : (
