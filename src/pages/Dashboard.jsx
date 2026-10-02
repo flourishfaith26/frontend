@@ -55,15 +55,6 @@ const NavRail = styled('nav', {
         padding: '0 $2 env(safe-area-inset-bottom, 0px) $2',
         borderRight: 'none',
         borderTop: '1px solid $border',
-    },
-    variants: {
-        mobileHidden: {
-            true: {
-                '@media (max-width: 768px)': {
-                    display: 'none',
-                }
-            }
-        }
     }
 });
 
@@ -204,6 +195,7 @@ const Sidebar = styled('aside', {
     flexDirection: 'column',
     padding: '$3',
     flexShrink: 0,
+    overflowY: 'auto',
     '@media (min-width: 1400px)': {
         width: '350px',
     },
@@ -215,17 +207,10 @@ const Sidebar = styled('aside', {
     },
     '@media (max-width: 768px)': {
         width: '100%',
+        flex: 1,
+        minHeight: 0,
         padding: '16px',
         borderRight: 'none',
-    },
-    variants: {
-        mobileHidden: {
-            true: {
-                '@media (max-width: 768px)': {
-                    display: 'none',
-                }
-            }
-        }
     }
 });
 
@@ -301,15 +286,6 @@ const ChatArea = styled('main', {
     minHeight: 0,
     '@media (max-width: 768px)': {
         width: '100%',
-    },
-    variants: {
-        mobileHidden: {
-            true: {
-                '@media (max-width: 768px)': {
-                    display: 'none',
-                }
-            }
-        }
     }
 });
 
@@ -2049,7 +2025,7 @@ export default function Dashboard() {
 
     return (
         <AppContainer>
-            <NavRail mobileHidden={showChatArea}>
+            <NavRail className={showChatArea ? 'mobile-hidden' : ''}>
                 <NavRailTop>
                     <NavRailItem active={activeTab === 'chats'} onClick={() => handleTabChange('chats')} title="Chats">
                         <MessageSquare size={22} />
@@ -2090,7 +2066,7 @@ export default function Dashboard() {
                 </NavRailBottom>
             </NavRail>
 
-            <Sidebar mobileHidden={showChatArea}>
+            <Sidebar className={showChatArea ? 'mobile-hidden' : ''}>
                 {activeTab === 'calls' && (
                     <>
                         <SidebarHeader>
@@ -2445,7 +2421,7 @@ export default function Dashboard() {
                 )}
             </Sidebar>
 
-            <ChatArea mobileHidden={!showChatArea}>
+            <ChatArea className={!showChatArea ? 'mobile-hidden' : ''}>
                 {activeTab === 'settings' && activeSettingTab ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, backgroundColor: 'var(--colors-bg)', overflow: 'hidden' }}>
                         {activeSettingTab === 'Profile' ? (
