@@ -2523,9 +2523,42 @@ export default function Dashboard() {
 
                 {activeTab === 'status' && (
                     <>
-                        <SidebarHeader>
-                            <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Status</h2>
-                        </SidebarHeader>
+                        <div style={{ padding: '16px 20px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
+                                    <MobileOnlyText>DevSup</MobileOnlyText>
+                                    <DesktopOnlyText>Status</DesktopOnlyText>
+                                </h2>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <IconButton title="New Status" onClick={() => setIsStatusModalOpen(true)} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
+                                        <Plus size={20} />
+                                    </IconButton>
+                                    <div style={{ position: 'relative' }}>
+                                        <IconButton title="Menu" onClick={() => setIsChatsMenuOpen(!isChatsMenuOpen)} style={{ backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}>
+                                            <MoreVertical size={20} />
+                                        </IconButton>
+                                        {isChatsMenuOpen && (
+                                            <>
+                                                <div
+                                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1999 }}
+                                                    onClick={() => setIsChatsMenuOpen(false)}
+                                                />
+                                                <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '12px', zIndex: 2000 }}>
+                                                    <ContextMenuItem onClick={() => { handleTabChange('settings'); setIsChatsMenuOpen(false); }}>
+                                                        <Settings size={18} style={{ opacity: 0.8 }} />
+                                                        Settings
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { setIsLogoutModalOpen(true); setIsChatsMenuOpen(false); }}>
+                                                        <LogOut size={18} style={{ opacity: 0.8 }} />
+                                                        Log out
+                                                    </ContextMenuItem>
+                                                </ContextMenuContainer>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <ChannelItem active={activeStatus === 'My status'} onClick={() => {
                             if (myGroupedStatuses) {
@@ -2542,6 +2575,8 @@ export default function Dashboard() {
                                             return <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', overflow: 'hidden', textAlign: 'center', padding: '4px', border: '2px solid var(--colors-accent)' }}>
                                                 <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
                                             </div>
+                                        } else if (last.type === 'video') {
+                                            return <video src={last.content} style={{ width: '48px', height: '48px', border: '2px solid var(--colors-accent)', padding: '2px', objectFit: 'cover', borderRadius: '50%' }} />
                                         } else {
                                             return <Avatar src={last.content} style={{ width: '48px', height: '48px', border: '2px solid var(--colors-accent)', padding: '2px', objectFit: 'cover' }} />
                                         }
@@ -2577,6 +2612,8 @@ export default function Dashboard() {
                                                 return <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', overflow: 'hidden', textAlign: 'center', padding: '4px' }}>
                                                     <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
                                                 </div>
+                                            } else if (last.type === 'video') {
+                                                return <video src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '50%' }} />
                                             } else {
                                                 return <Avatar src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover' }} />
                                             }
