@@ -266,6 +266,21 @@ const DesktopOnlyText = styled('span', {
     }
 });
 
+const MobileOnlyOverlay = styled('div', {
+    display: 'none',
+    '@media (max-width: 768px)': {
+        display: 'block',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        zIndex: 1999,
+        backdropFilter: 'blur(2px)',
+    }
+});
+
 const ChannelItem = styled('div', {
     padding: '$2',
     borderRadius: '$1',
@@ -454,6 +469,18 @@ const ContextMenuContainer = styled('div', {
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
+    '@media (max-width: 768px)': {
+        position: 'fixed !important',
+        bottom: '0 !important',
+        top: 'auto !important',
+        left: '0 !important',
+        right: '0 !important',
+        width: '100vw !important',
+        borderBottomLeftRadius: '0 !important',
+        borderBottomRightRadius: '0 !important',
+        padding: '16px 8px env(safe-area-inset-bottom, 16px) !important',
+        transform: 'none !important',
+    }
 });
 
 const ContextMenuItem = styled('div', {
@@ -470,6 +497,10 @@ const ContextMenuItem = styled('div', {
     '&:hover': {
         backgroundColor: 'rgba(6, 182, 212, 0.15)',
         color: '$accent',
+    },
+    '@media (max-width: 768px)': {
+        padding: '16px',
+        fontSize: '1.1rem',
     }
 });
 
@@ -2873,7 +2904,17 @@ export default function Dashboard() {
                                                     const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     return (
-                                                        <div key={msg._id || msg.createdAt} style={{ display: 'flex', flexDirection: isOwnMessage ? 'row-reverse' : 'row', alignItems: 'center', gap: '12px', width: '100%' }}>
+                                                        <div key={msg._id || msg.createdAt} style={{ 
+                                                            display: 'flex', 
+                                                            flexDirection: isOwnMessage ? 'row-reverse' : 'row', 
+                                                            alignItems: 'center', 
+                                                            gap: '12px', 
+                                                            width: '100%',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '8px',
+                                                            backgroundColor: (contextMenu.visible && contextMenu.message?._id === (msg._id || msg.createdAt)) ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                                                            transition: 'background-color 0.2s ease',
+                                                        }}>
                                                             {isSelectingMessages && (
                                                                 <input 
                                                                     type="checkbox" 
@@ -4139,7 +4180,9 @@ export default function Dashboard() {
             />
 
             {contextMenu.visible && (contextMenu.message || contextMenu.callLog || contextMenu.conversation) && (
-                <ContextMenuContainer style={{ top: contextMenu.y, left: contextMenu.x, zIndex: 9999, position: 'fixed' }}>
+                <>
+                    <MobileOnlyOverlay onClick={() => setContextMenu({ ...contextMenu, visible: false })} />
+                    <ContextMenuContainer style={{ top: contextMenu.y, left: contextMenu.x, zIndex: 2000, position: 'fixed' }}>
                     {contextMenu.conversation && (
                         <>
                             <ContextMenuItem onClick={(e) => { setContextMenu({ ...contextMenu, visible: false }); deleteConversation(e, contextMenu.conversation._id); }} style={{ color: '#ef4444' }}>
@@ -4209,6 +4252,7 @@ export default function Dashboard() {
                         </>
                     )}
                 </ContextMenuContainer>
+                </>
             )}
 
             {/* Premium Feature Placeholder Modal */}
