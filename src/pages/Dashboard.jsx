@@ -2122,12 +2122,47 @@ export default function Dashboard() {
 
                 {activeTab === 'chats' && (
                     <>
-                        <SidebarHeader>
-                            <SectionTitle>Chats</SectionTitle>
-                            <IconButton title="New Chat" onClick={openCreateModal}>
-                                <PlusIcon />
-                            </IconButton>
-                        </SidebarHeader>
+                        <div style={{ padding: '16px 20px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>Chats</h2>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <IconButton title="New Chat" onClick={openCreateModal} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
+                                        <Plus size={20} />
+                                    </IconButton>
+                                    <IconButton title="Menu" style={{ backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}>
+                                        <MoreVertical size={20} />
+                                    </IconButton>
+                                </div>
+                            </div>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                backgroundColor: 'var(--colors-bg)', 
+                                padding: '8px 12px', 
+                                borderRadius: '8px', 
+                                gap: '12px',
+                                marginBottom: '16px'
+                            }}>
+                                <Search size={18} color="var(--colors-textMuted)" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search or start a new chat"
+                                    style={{ 
+                                        border: 'none', 
+                                        background: 'transparent', 
+                                        outline: 'none', 
+                                        color: 'var(--colors-textMain)', 
+                                        fontSize: '0.95rem',
+                                        width: '100%'
+                                    }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '4px' }}>
+                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMain)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: '500' }}>All</div>
+                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMuted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Unread</div>
+                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMuted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Favourites</div>
+                            </div>
+                        </div>
 
                         {conversations.length === 0 ? (
                             <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>No conversations yet.</div>
@@ -2144,7 +2179,7 @@ export default function Dashboard() {
                                         key={conv._id}
                                         active={activeConversationId === conv._id}
                                         onClick={() => setActiveConversationId(conv._id)}
-                                        style={{ padding: '8px 12px', borderBottom: '1px solid var(--colors-border)', borderRadius: 0, gap: '12px', alignItems: 'center', margin: 0 }}
+                                        style={{ padding: '12px 20px', borderRadius: 0, gap: '16px', alignItems: 'center', margin: 0, borderBottom: 'none' }}
                                         onMouseEnter={(e) => {
                                             const btn = e.currentTarget.querySelector('.conv-delete-btn');
                                             if (btn) btn.style.opacity = 1;
@@ -2167,7 +2202,7 @@ export default function Dashboard() {
                                                 src={isGroup
                                                     ? (conv.avatarUrl || `https://ui-avatars.com/api/?name=${conv.name}&background=06B6D4&color=fff`)
                                                     : (otherParticipant?.avatarUrl || `https://ui-avatars.com/api/?name=${otherParticipant?.displayName || 'User'}&background=06B6D4&color=fff`)}
-                                                style={{ width: '40px', height: '40px', border: 'none' }}
+                                                style={{ width: '48px', height: '48px', border: 'none' }}
                                             />
                                             {!isGroup && isOtherUserOnline && <OnlineDot style={{ width: '12px', height: '12px', bottom: '2px', right: '2px' }} />}
                                         </AvatarWrapper>
