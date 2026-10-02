@@ -1179,6 +1179,7 @@ export default function Dashboard() {
     // New 3-Pane Layout Drawer State
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+    const [isChatsMenuOpen, setIsChatsMenuOpen] = useState(false);
     const [activeContactPane, setActiveContactPane] = useState(null);
     
     // Premium Context Menu State
@@ -2175,9 +2176,33 @@ export default function Dashboard() {
                                     <IconButton title="New Chat" onClick={openCreateModal} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
                                         <Plus size={20} />
                                     </IconButton>
-                                    <IconButton title="Menu" style={{ backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}>
-                                        <MoreVertical size={20} />
-                                    </IconButton>
+                                    <div style={{ position: 'relative' }}>
+                                        <IconButton title="Menu" onClick={() => setIsChatsMenuOpen(!isChatsMenuOpen)} style={{ backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}>
+                                            <MoreVertical size={20} />
+                                        </IconButton>
+                                        {isChatsMenuOpen && (
+                                            <>
+                                                <div
+                                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1999 }}
+                                                    onClick={() => setIsChatsMenuOpen(false)}
+                                                />
+                                                <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '12px', zIndex: 2000 }}>
+                                                    <ContextMenuItem onClick={() => { setConvType('group'); setIsModalOpen(true); setIsChatsMenuOpen(false); }}>
+                                                        <Users size={18} style={{ opacity: 0.8 }} />
+                                                        New group
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { handleTabChange('settings'); setIsChatsMenuOpen(false); }}>
+                                                        <Settings size={18} style={{ opacity: 0.8 }} />
+                                                        Settings
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { setIsLogoutModalOpen(true); setIsChatsMenuOpen(false); }}>
+                                                        <LogOut size={18} style={{ opacity: 0.8 }} />
+                                                        Log out
+                                                    </ContextMenuItem>
+                                                </ContextMenuContainer>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div style={{ 
