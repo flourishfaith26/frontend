@@ -1077,6 +1077,7 @@ export default function Dashboard() {
     const [socket, setSocket] = useState(null);
     const [activeUsers, setActiveUsers] = useState([]);
     const [conversations, setConversations] = useState([]);
+    const [chatSearchQuery, setChatSearchQuery] = useState('');
     const [activeConversationId, setActiveConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
 
@@ -2177,6 +2178,8 @@ export default function Dashboard() {
                                 <input 
                                     type="text" 
                                     placeholder="Search or start a new chat"
+                                    value={chatSearchQuery}
+                                    onChange={(e) => setChatSearchQuery(e.target.value)}
                                     style={{ 
                                         border: 'none', 
                                         background: 'transparent', 
@@ -2190,10 +2193,22 @@ export default function Dashboard() {
                             <div style={{ display: 'none' }}></div>
                         </div>
 
-                        {conversations.length === 0 ? (
+                        {conversations.filter(c => {
+                            if (!chatSearchQuery) return true;
+                            const isGroup = c.type === 'group';
+                            const otherParticipant = !isGroup ? c.participants?.find(p => p._id !== mongoUserId) : null;
+                            const convName = isGroup ? c.name : (otherParticipant?.displayName || '');
+                            return convName.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                        }).length === 0 ? (
                             <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>No conversations yet.</div>
                         ) : (
-                            [...conversations].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(conv => {
+                            [...conversations].filter(c => {
+                                if (!chatSearchQuery) return true;
+                                const isGroup = c.type === 'group';
+                                const otherParticipant = !isGroup ? c.participants?.find(p => p._id !== mongoUserId) : null;
+                                const convName = isGroup ? c.name : (otherParticipant?.displayName || '');
+                                return convName.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                            }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(conv => {
                                 const isGroup = conv.type === 'group';
                                 const otherParticipant = !isGroup ? conv.participants?.find(p => p._id !== mongoUserId) : null;
                                 const isOtherUserOnline = otherParticipant && activeUsers.includes(otherParticipant._id);
@@ -3194,13 +3209,32 @@ export default function Dashboard() {
                                         {activeContactPane === 'encryption' && 'Encryption'}
                                     </span>
                                 </SubPaneHeader>
-                                <div style={{ flex: 1, backgroundColor: 'var(--colors-surface)', padding: '24px' }}>
-                                    {activeContactPane === 'media' && (
-                                        <div style={{ textAlign: 'center', color: 'var(--colors-textMuted)', padding: '40px 0' }}>
-                                            <Image size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
-                                            <p>No media, links, or docs in this chat yet.</p>
-                                        </div>
-                                    )}
+                                <div style={{ flex: 1, backgroundColor: 'var(--colors-surface)', padding: '24px', overflowY: 'auto' }}>
+                                    {activeContactPane === 'media' && (() => {
+                                        const mediaMsgs = messages.filter(m => m.content && (m.content.includes('res.cloudinary.com') || m.content.startsWith('data:image') || m.content.startsWith('data:video')));
+                                        return (
+                                            <div>
+                                                {mediaMsgs.length === 0 ? (
+                                                    <div style={{ textAlign: 'center', color: 'var(--colors-textMuted)', padding: '40px 0' }}>
+                                                        <Image size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
+                                                        <p>No media, links, or docs in this chat yet.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                                        {mediaMsgs.map(msg => (
+                                                            <div key={msg._id} style={{ width: '100%', aspectRatio: '1', backgroundColor: 'var(--colors-bg)', borderRadius: '8px', overflow: 'hidden' }}>
+                                                                {msg.content.includes('video') || msg.content.startsWith('data:video') ? (
+                                                                    <video src={msg.content} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                ) : (
+                                                                    <img src={msg.content} alt="Media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                     {activeContactPane === 'starred' && (
                                         <div style={{ textAlign: 'center', color: 'var(--colors-textMuted)', padding: '40px 0' }}>
                                             <Star size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
