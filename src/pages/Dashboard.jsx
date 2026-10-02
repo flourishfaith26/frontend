@@ -9,7 +9,7 @@ import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
 import Whiteboard from '../components/Whiteboard';
 import CallOverlay from '../components/CallOverlay';
-import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser } from 'lucide-react';
+import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 import StoryViewer from '../components/StoryViewer';
 import { motion } from 'framer-motion';
@@ -991,6 +991,35 @@ const DrawerSection = styled('div', {
     marginBottom: '$4',
 });
 
+const ContactMenuItem = styled('div', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '24px',
+    padding: '16px 24px',
+    cursor: 'pointer',
+    backgroundColor: '$surface',
+    transition: 'background-color 0.2s',
+    '&:hover': {
+        backgroundColor: '$bg',
+    }
+});
+
+const SubPaneHeader = styled('div', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    padding: '16px 20px',
+    backgroundColor: '$bg',
+    color: '$textMain',
+    fontWeight: '500',
+    fontSize: '1.1rem',
+    cursor: 'pointer',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    borderBottom: '1px solid $border'
+});
+
 const ParticipantRow = styled('div', {
     display: 'flex',
     alignItems: 'center',
@@ -1137,6 +1166,7 @@ export default function Dashboard() {
     // New 3-Pane Layout Drawer State
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+    const [activeContactPane, setActiveContactPane] = useState(null);
     
     // Premium Context Menu State
     const [premiumModal, setPremiumModal] = useState(null);
@@ -3156,14 +3186,81 @@ export default function Dashboard() {
             <RightDrawer isOpen={isDrawerOpen}>
                 {isDrawerOpen && activeConversation && (
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', paddingBottom: '32px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '16px', backgroundColor: 'var(--colors-surface)', position: 'sticky', top: 0, zIndex: 10 }}>
-                            <IconButton onClick={() => setIsDrawerOpen(false)}>
-                                <X size={20} />
-                            </IconButton>
-                            <span style={{ fontSize: '1.1rem', color: 'var(--colors-textMain)', fontWeight: '500' }}>
-                                {activeConversation.type === 'group' ? 'Group Info' : 'Contact Info'}
-                            </span>
-                        </div>
+                        {activeContactPane ? (
+                            <>
+                                <SubPaneHeader onClick={() => setActiveContactPane(null)}>
+                                    <ArrowLeft size={20} />
+                                    <span>
+                                        {activeContactPane === 'media' && 'Media, links and docs'}
+                                        {activeContactPane === 'starred' && 'Starred messages'}
+                                        {activeContactPane === 'notifications' && 'Notification settings'}
+                                        {activeContactPane === 'disappearing' && 'Disappearing messages'}
+                                        {activeContactPane === 'encryption' && 'Encryption'}
+                                    </span>
+                                </SubPaneHeader>
+                                <div style={{ flex: 1, backgroundColor: 'var(--colors-surface)', padding: '24px' }}>
+                                    {activeContactPane === 'media' && (
+                                        <div style={{ textAlign: 'center', color: 'var(--colors-textMuted)', padding: '40px 0' }}>
+                                            <Image size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
+                                            <p>No media, links, or docs in this chat yet.</p>
+                                        </div>
+                                    )}
+                                    {activeContactPane === 'starred' && (
+                                        <div style={{ textAlign: 'center', color: 'var(--colors-textMuted)', padding: '40px 0' }}>
+                                            <Star size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
+                                            <p>No starred messages.</p>
+                                        </div>
+                                    )}
+                                    {activeContactPane === 'notifications' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '1rem' }}>Mute notifications</span>
+                                                <input type="checkbox" style={{ accentColor: 'var(--colors-accent)', width: '20px', height: '20px', cursor: 'pointer' }} />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '1rem' }}>Custom tone</span>
+                                                <span style={{ color: 'var(--colors-accent)', cursor: 'pointer', fontSize: '0.9rem' }}>Default</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {activeContactPane === 'disappearing' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                                            <p style={{ color: 'var(--colors-textMuted)', fontSize: '0.9rem', marginBottom: '8px' }}>Make messages in this chat disappear for everyone after a selected duration.</p>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--colors-textMain)', cursor: 'pointer' }}>
+                                                <input type="radio" name="disappearing" defaultChecked style={{ accentColor: 'var(--colors-accent)', width: '18px', height: '18px' }} /> <span style={{ fontSize: '1rem' }}>Off</span>
+                                            </label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--colors-textMain)', cursor: 'pointer' }}>
+                                                <input type="radio" name="disappearing" style={{ accentColor: 'var(--colors-accent)', width: '18px', height: '18px' }} /> <span style={{ fontSize: '1rem' }}>24 hours</span>
+                                            </label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--colors-textMain)', cursor: 'pointer' }}>
+                                                <input type="radio" name="disappearing" style={{ accentColor: 'var(--colors-accent)', width: '18px', height: '18px' }} /> <span style={{ fontSize: '1rem' }}>7 days</span>
+                                            </label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--colors-textMain)', cursor: 'pointer' }}>
+                                                <input type="radio" name="disappearing" style={{ accentColor: 'var(--colors-accent)', width: '18px', height: '18px' }} /> <span style={{ fontSize: '1rem' }}>90 days</span>
+                                            </label>
+                                        </div>
+                                    )}
+                                    {activeContactPane === 'encryption' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '20px 0' }}>
+                                            <Lock size={64} color="var(--colors-accent)" style={{ marginBottom: '24px' }} />
+                                            <p style={{ color: 'var(--colors-textMain)', marginBottom: '24px', lineHeight: '1.6', fontSize: '0.95rem' }}>Messages and calls are end-to-end encrypted. No one outside of this chat, not even DevSup, can read or listen to them.</p>
+                                            <div style={{ padding: '16px 24px', backgroundColor: 'var(--colors-bg)', borderRadius: '8px', letterSpacing: '2px', fontSize: '1.1rem', color: 'var(--colors-accent)', fontWeight: 'bold' }}>
+                                                19340 50389 23901 88472 90123
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '16px', backgroundColor: 'var(--colors-surface)', position: 'sticky', top: 0, zIndex: 10 }}>
+                                    <IconButton onClick={() => { setIsDrawerOpen(false); setActiveContactPane(null); }}>
+                                        <X size={20} />
+                                    </IconButton>
+                                    <span style={{ fontSize: '1.1rem', color: 'var(--colors-textMain)', fontWeight: '500' }}>
+                                        {activeConversation.type === 'group' ? 'Group Info' : 'Contact Info'}
+                                    </span>
+                                </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 16px', backgroundColor: 'var(--colors-surface)' }}>
                             <label htmlFor={`group-avatar-upload-${activeConversation._id}`} style={{ cursor: activeConversation.type === 'group' ? 'pointer' : 'default', position: 'relative', display: 'inline-block' }}>
@@ -3261,30 +3358,42 @@ export default function Dashboard() {
                             );
                         })()}
 
-                        <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
+                        <div style={{ backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column' }}>
+                            <ContactMenuItem onClick={() => setActiveContactPane('media')}>
                                 <Image size={24} color="var(--colors-textMuted)" />
-                                <span style={{ fontSize: '1rem' }}>Media, links and docs</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                                    <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>Media, links and docs</span>
+                                    <ChevronRight size={20} color="var(--colors-textMuted)" />
+                                </div>
+                            </ContactMenuItem>
+                            <ContactMenuItem onClick={() => setActiveContactPane('starred')}>
                                 <Star size={24} color="var(--colors-textMuted)" />
-                                <span style={{ fontSize: '1rem' }}>Starred messages</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                                    <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>Starred messages</span>
+                                    <ChevronRight size={20} color="var(--colors-textMuted)" />
+                                </div>
+                            </ContactMenuItem>
+                            <ContactMenuItem onClick={() => setActiveContactPane('notifications')}>
                                 <Bell size={24} color="var(--colors-textMuted)" />
-                                <span style={{ fontSize: '1rem' }}>Notification settings</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                                    <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>Notification settings</span>
+                                    <ChevronRight size={20} color="var(--colors-textMuted)" />
+                                </div>
+                            </ContactMenuItem>
+                            <ContactMenuItem onClick={() => setActiveContactPane('disappearing')}>
                                 <Clock size={24} color="var(--colors-textMuted)" />
-                                <span style={{ fontSize: '1rem' }}>Disappearing messages</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
-                                <Lock size={24} color="var(--colors-textMuted)" />
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '1rem' }}>Encryption</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                                    <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>Disappearing messages</span>
+                                    <ChevronRight size={20} color="var(--colors-textMuted)" />
+                                </div>
+                            </ContactMenuItem>
+                            <ContactMenuItem onClick={() => setActiveContactPane('encryption')}>
+                                <Lock size={24} color="var(--colors-textMuted)" style={{ flexShrink: 0 }} />
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                    <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>Encryption</span>
                                     <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)' }}>Messages are end-to-end encrypted. Click to verify.</span>
                                 </div>
-                            </div>
+                            </ContactMenuItem>
                         </div>
 
                         <div style={{ height: '8px', backgroundColor: 'var(--colors-bg)' }}></div>
@@ -3349,33 +3458,37 @@ export default function Dashboard() {
                                 </div>
                             </div>
                         ) : (
-                            <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={(e) => {
+                            <div style={{ backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column' }}>
+                                <ContactMenuItem style={{ color: '#ef4444' }} onClick={(e) => {
                                     if (window.confirm('Are you sure you want to clear this chat? This cannot be undone.')) {
                                         deleteConversation(e, activeConversation._id);
                                     }
                                 }}>
                                     <Trash2 size={24} color="#ef4444" />
-                                    <span style={{ fontSize: '1rem' }}>Clear chat</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={() => {
-                                    const userToBlock = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
-                                    if (window.confirm(`Are you sure you want to block ${userToBlock}?`)) {
-                                        showToast(`User ${userToBlock} has been blocked.`);
-                                    }
-                                }}>
-                                    <ShieldAlert size={24} color="#ef4444" />
-                                    <span style={{ fontSize: '1rem' }}>Block {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={() => {
-                                    const userToReport = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
-                                    if (window.confirm(`Are you sure you want to report ${userToReport}?`)) {
-                                        showToast(`User ${userToReport} has been reported. Our team will review the chat logs.`);
-                                    }
-                                }}>
-                                    <ThumbsDown size={24} color="#ef4444" />
-                                    <span style={{ fontSize: '1rem' }}>Report {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
-                                </div>
+                                    <span style={{ fontSize: '1rem', fontWeight: '500' }}>Clear chat</span>
+                                </ContactMenuItem>
+                                {(!activeConversation.type || activeConversation.type === 'direct') && (
+                                    <>
+                                        <ContactMenuItem style={{ color: '#ef4444' }} onClick={() => {
+                                            const userToBlock = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
+                                            if (window.confirm(`Are you sure you want to block ${userToBlock}?`)) {
+                                                showToast(`User ${userToBlock} has been blocked.`);
+                                            }
+                                        }}>
+                                            <ShieldAlert size={24} color="#ef4444" />
+                                            <span style={{ fontSize: '1rem', fontWeight: '500' }}>Block {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
+                                        </ContactMenuItem>
+                                        <ContactMenuItem style={{ color: '#ef4444' }} onClick={() => {
+                                            const userToReport = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
+                                            if (window.confirm(`Are you sure you want to report ${userToReport}?`)) {
+                                                showToast(`User ${userToReport} has been reported. Our team will review the chat logs.`);
+                                            }
+                                        }}>
+                                            <ThumbsDown size={24} color="#ef4444" />
+                                            <span style={{ fontSize: '1rem', fontWeight: '500' }}>Report {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
+                                        </ContactMenuItem>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
