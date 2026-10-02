@@ -584,12 +584,15 @@ const UserListItem = styled('div', {
 
 // --- Input Area Components ---
 const InputArea = styled('form', {
-    padding: '$3 $4',
+    padding: '12px 16px',
     backgroundColor: '$surface',
     borderTop: '1px solid $border',
     display: 'flex',
     alignItems: 'flex-end',
     gap: '$2',
+    '@media (max-width: 768px)': {
+        paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+    }
 });
 
 const AttachButton = styled('button', {
