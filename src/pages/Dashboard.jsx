@@ -2187,11 +2187,7 @@ export default function Dashboard() {
                                     }}
                                 />
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '4px' }}>
-                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMain)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: '500' }}>All</div>
-                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMuted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Unread</div>
-                                <div style={{ padding: '6px 16px', backgroundColor: 'var(--colors-bg)', borderRadius: '20px', fontSize: '0.85rem', color: 'var(--colors-textMuted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Favourites</div>
-                            </div>
+                            <div style={{ display: 'none' }}></div>
                         </div>
 
                         {conversations.length === 0 ? (
@@ -2239,7 +2235,7 @@ export default function Dashboard() {
 
                                         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                                                <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {isGroup ? conv.name : (otherParticipant?.displayName || 'Unknown User')}
                                                 </span>
                                                 {conv.lastMessage && (
