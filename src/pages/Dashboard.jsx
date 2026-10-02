@@ -665,8 +665,8 @@ const CustomMicIcon = ({ size = 24 }) => (
 );
 
 const AttachmentImage = styled('img', {
-    maxWidth: '300px',
-    maxHeight: '300px',
+    maxWidth: 'min(100%, 400px)',
+    maxHeight: '450px',
     borderRadius: '10px',
     objectFit: 'contain',
     cursor: 'pointer',
@@ -2909,11 +2909,11 @@ export default function Dashboard() {
                                                                                                 setIsWhiteboardOpen(true);
                                                                                             }
                                                                                         }} title="Open Whiteboard" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', cursor: 'pointer' }}>
-                                                                                            <AttachmentImage src={msg.content} alt="Whiteboard design" style={isMediaMessage ? { maxWidth: '100%', width: '300px' } : {}} />
+                                                                                            <AttachmentImage src={msg.content} alt="Whiteboard design" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
                                                                                         </div>
                                                                                     ) : (
                                                                                         <a href={msg.content} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px' }}>
-                                                                                            <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { maxWidth: '100%', width: '300px' } : {}} />
+                                                                                            <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
                                                                                         </a>
                                                                                     )
                                                                                 )}
