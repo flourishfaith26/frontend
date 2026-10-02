@@ -2498,7 +2498,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                 ) : activeConversation ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1, minHeight: 0 }}>
                             <ChatHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', gap: '8px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                                     <>
@@ -2939,7 +2939,7 @@ export default function Dashboard() {
                                     )}
                                 </>
                             ) : communityTab === 'live coding' ? (
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: 0 }}>
                                     <Whiteboard
                                         socket={socket}
                                         conversationId={activeConversationId}
