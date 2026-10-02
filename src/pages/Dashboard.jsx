@@ -2736,10 +2736,8 @@ export default function Dashboard() {
                                                         const name = activeConversation.type === 'group'
                                                             ? activeConversation.name
                                                             : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Direct Message');
-                                                        return name.length > 20 ? (
-                                                            <marquee scrollamount="4" style={{ flex: 1, maxWidth: '150px' }}>{name}</marquee>
-                                                        ) : (
-                                                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>{name}</span>
+                                                        return (
+                                                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{name}</span>
                                                         );
                                                     })()}
                                                     {mutedConversations.includes(activeConversation._id) && <BellOff size={14} color="var(--colors-textMuted)" style={{ flexShrink: 0 }} />}
@@ -2943,7 +2941,7 @@ export default function Dashboard() {
                                                     const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     return (
-                                                        <div key={msg._id || msg.createdAt} style={{ 
+                                                        <div id={`message-${msg._id || msg.createdAt}`} key={msg._id || msg.createdAt} style={{ 
                                                             display: 'flex', 
                                                             flexDirection: isOwnMessage ? 'row-reverse' : 'row', 
                                                             alignItems: 'center', 
@@ -2996,13 +2994,22 @@ export default function Dashboard() {
                                                                 <div style={{ wordBreak: 'break-word', marginTop: showSenderName && !isMediaMessage ? '2px' : '0', maxWidth: isImageWithCaption ? '300px' : 'none' }}>
                                                                     {msg.replyTo && (
                                                                         <div 
+                                                                            onClick={() => {
+                                                                                const el = document.getElementById(`message-${msg.replyTo._id}`);
+                                                                                if (el) {
+                                                                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                                    el.style.backgroundColor = 'rgba(6, 182, 212, 0.3)';
+                                                                                    setTimeout(() => { el.style.backgroundColor = 'transparent' }, 1000);
+                                                                                }
+                                                                            }}
                                                                             style={{
                                                                                 backgroundColor: 'rgba(0, 0, 0, 0.15)',
                                                                                 borderLeft: `4px solid ${isOwnMessage ? 'rgba(255, 255, 255, 0.6)' : 'var(--colors-accent)'}`,
                                                                                 padding: '6px 10px',
                                                                                 borderRadius: '6px',
                                                                                 marginBottom: '6px',
-                                                                                fontSize: '0.85rem'
+                                                                                fontSize: '0.85rem',
+                                                                                cursor: 'pointer',
                                                                             }}
                                                                         >
                                                                             <div style={{ color: isOwnMessage ? 'rgba(255, 255, 255, 0.9)' : 'var(--colors-accent)', fontWeight: 'bold', marginBottom: '2px' }}>
