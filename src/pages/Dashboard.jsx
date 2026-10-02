@@ -1260,6 +1260,7 @@ export default function Dashboard() {
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, message: null, callLog: null });
+    const [connectionError, setConnectionError] = useState(null);
 
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -1434,17 +1435,7 @@ export default function Dashboard() {
                 setSocket(newSocket);
             } catch (error) {
                 console.error('Integration failure:', error);
-                if (
-                    error.message === 'Unauthorized' ||
-                    error.error === 'consent_required' ||
-                    error.error === 'login_required' ||
-                    String(error).includes('Consent required') ||
-                    String(error).includes('Login required') ||
-                    String(error).includes('Unexpected token') ||
-                    String(error).includes('SyntaxError')
-                ) {
-                    logout({ logoutParams: { returnTo: window.location.origin } });
-                }
+                setConnectionError(`Could not connect to the backend API at ${BACKEND_URL}. Error: ${error.message || String(error)}`);
             }
         };
 
@@ -2007,6 +1998,25 @@ export default function Dashboard() {
             }
         }
     };
+
+    if (connectionError) {
+        return (
+            <AppContainer>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--colors-bg)', padding: '20px', textAlign: 'center' }}>
+                    <div style={{ color: '#EF4444', marginBottom: '20px' }}>
+                        <ShieldAlert size={64} />
+                    </div>
+                    <h2 style={{ fontSize: '2rem', marginBottom: '12px', color: 'var(--colors-textMain)' }}>Backend Connection Failed</h2>
+                    <p style={{ color: 'var(--colors-textMuted)', maxWidth: '600px', lineHeight: '1.6', marginBottom: '24px' }}>
+                        {connectionError}
+                    </p>
+                    <Button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>
+                        Log Out
+                    </Button>
+                </div>
+            </AppContainer>
+        );
+    }
 
     return (
         <AppContainer>
