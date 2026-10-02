@@ -914,7 +914,8 @@ const CustomAudioPlayer = ({ src, isOwnMessage, avatarUrl }) => {
             marginTop: '4px',
             backgroundColor: 'transparent',
             padding: '4px 0px',
-            minWidth: '240px',
+            width: '240px',
+            maxWidth: '100%',
             color: 'inherit'
         }}>
             {avatarUrl && (
