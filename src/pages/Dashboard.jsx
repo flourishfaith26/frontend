@@ -21,7 +21,9 @@ const AppContainer = styled('div', {
     display: 'flex',
     flexDirection: 'row',
     height: '100vh',
-    minHeight: '100dvh',
+    '@supports (height: 100dvh)': {
+        height: '100dvh',
+    },
     width: '100%',
     overflowX: 'hidden',
     position: 'relative',
@@ -253,6 +255,15 @@ const IconButton = styled('button', {
     '&:hover': {
         backgroundColor: '$bg',
         color: '$textMain',
+    },
+    variants: {
+        desktopOnly: {
+            true: {
+                '@media (max-width: 768px)': {
+                    display: 'none',
+                }
+            }
+        }
     }
 });
 
@@ -286,6 +297,7 @@ const ChatArea = styled('main', {
     flexDirection: 'column',
     backgroundColor: '$bg',
     minWidth: 0,
+    minHeight: 0,
     '@media (max-width: 768px)': {
         width: '100%',
     },
@@ -305,6 +317,13 @@ const ChatHeader = styled('div', {
     borderBottom: '1px solid $border',
     color: '$textMain',
     fontWeight: 'bold',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    backgroundColor: '$bg',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
 });
 
 const MobileBackButton = styled('button', {
@@ -329,6 +348,7 @@ const floatDoodle = keyframes({
 
 const MessageList = styled('div', {
     flex: 1,
+    minHeight: 0,
     padding: '$4',
     overflowY: 'auto',
     color: '$textMuted',
@@ -2499,15 +2519,15 @@ export default function Dashboard() {
                     </div>
                 ) : activeConversation ? (
                         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
-                            <ChatHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <ChatHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                                     <>
                                         <MobileBackButton onClick={() => setActiveConversationId(null)}>
                                             <ArrowLeft size={24} />
                                         </MobileBackButton>
                                         <div
                                             onClick={() => setIsDrawerOpen(true)}
-                                            style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', flex: 1, minWidth: 0 }}
                                             title={activeConversation.type === 'group' ? 'View Group Info' : 'View Contact Info'}
                                         >
                                             <AvatarWrapper>
@@ -2515,11 +2535,11 @@ export default function Dashboard() {
                                                     src={activeConversation.type === 'group'
                                                         ? (activeConversation.avatarUrl || `https://ui-avatars.com/api/?name=${activeConversation.name}&background=06B6D4&color=fff`)
                                                         : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.avatarUrl || `https://ui-avatars.com/api/?name=User&background=06B6D4&color=fff`)}
-                                                    style={{ width: '40px', height: '40px' }}
+                                                    style={{ width: '40px', height: '40px', flexShrink: 0 }}
                                                 />
                                             </AvatarWrapper>
-                                            <div style={{ display: 'flex', flexDirection: 'column', maxWidth: '400px' }}>
-                                                <span style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                                                <span style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {activeConversation.type === 'group'
                                                         ? activeConversation.name
                                                         : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Direct Message')}
@@ -2533,7 +2553,7 @@ export default function Dashboard() {
                                         </div>
                                     </>
                                 </div>
-                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
                                     {isSearchOpen && (
                                         <input
                                             type="text"
@@ -2546,7 +2566,8 @@ export default function Dashboard() {
                                                 border: '1px solid var(--colors-border)',
                                                 backgroundColor: 'var(--colors-bg)',
                                                 color: 'var(--colors-textMain)',
-                                                outline: 'none'
+                                                outline: 'none',
+                                                width: '120px'
                                             }}
                                         />
                                     )}
@@ -2555,7 +2576,7 @@ export default function Dashboard() {
                                         activeConversation.allowAnyMemberToAdd || 
                                         (!activeConversation.admins?.length && activeConversation.participants?.[0]?._id === mongoUserId)
                                     ) && (
-                                        <IconButton onClick={() => setIsAddMembersModalOpen(true)} title="Add Members">
+                                        <IconButton desktopOnly onClick={() => setIsAddMembersModalOpen(true)} title="Add Members">
                                             <UserPlus size={20} />
                                         </IconButton>
                                     )}
@@ -2565,10 +2586,11 @@ export default function Dashboard() {
                                     <IconButton onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' })} title="Voice Call">
                                         <Phone size={20} />
                                     </IconButton>
-                                    <IconButton onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
+                                    <IconButton desktopOnly onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
                                         <Search size={20} />
                                     </IconButton>
                                     <IconButton
+                                        desktopOnly
                                         onClick={() => {
                                             if (activeTab === 'communities') {
                                                 setCommunityTab('live coding');
