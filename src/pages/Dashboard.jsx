@@ -12,6 +12,7 @@ import CallOverlay from '../components/CallOverlay';
 import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 import StoryViewer from '../components/StoryViewer';
+import { motion } from 'framer-motion';
 import StatusUploadModal from '../components/StatusUploadModal';
 import EventsView from '../components/EventsView';
 import { useNavigate } from 'react-router-dom';
@@ -1262,6 +1263,7 @@ export default function Dashboard() {
     // Edit/Delete State
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [editInputContent, setEditInputContent] = useState('');
+    const [replyingToMessage, setReplyingToMessage] = useState(null);
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, message: null, callLog: null });
@@ -1611,12 +1613,14 @@ export default function Dashboard() {
             senderId: mongoUserId,
             content: text,
             isCodeSnippet: finalIsCode,
-            language: finalIsCode ? finalLang : 'plaintext'
+            language: finalIsCode ? finalLang : 'plaintext',
+            replyTo: replyingToMessage ? replyingToMessage._id : undefined
         };
 
         socket.emit('send_message', messagePayload);
 
         setMessageInput('');
+        setReplyingToMessage(null);
         if (inputRef.current) inputRef.current.style.height = '48px';
     };
 
@@ -2733,6 +2737,16 @@ export default function Dashboard() {
                                                                 />
                                                             )}
                                                             <ChatBubbleWrapper
+                                                                as={motion.div}
+                                                                drag="x"
+                                                                dragConstraints={{ left: 0, right: 0 }}
+                                                                dragElastic={{ left: 0, right: 0.5 }}
+                                                                onDragEnd={(e, info) => {
+                                                                    if (info.offset.x > 50) {
+                                                                        setReplyingToMessage(msg);
+                                                                        if (inputRef.current) inputRef.current.focus();
+                                                                    }
+                                                                }}
                                                                 isOwn={isOwnMessage}
                                                                 style={{ flex: 1, maxWidth: isSelectingMessages ? 'calc(100% - 32px)' : '100%', alignItems: isOwnMessage ? 'flex-end' : 'flex-start' }}
                                                             >
@@ -2756,6 +2770,25 @@ export default function Dashboard() {
                                                                 )}
 
                                                                 <div style={{ wordBreak: 'break-word', marginTop: showSenderName && !isMediaMessage ? '2px' : '0', maxWidth: isImageWithCaption ? '300px' : 'none' }}>
+                                                                    {msg.replyTo && (
+                                                                        <div 
+                                                                            style={{
+                                                                                backgroundColor: 'rgba(0, 0, 0, 0.15)',
+                                                                                borderLeft: `4px solid ${isOwnMessage ? 'rgba(255, 255, 255, 0.6)' : 'var(--colors-accent)'}`,
+                                                                                padding: '6px 10px',
+                                                                                borderRadius: '6px',
+                                                                                marginBottom: '6px',
+                                                                                fontSize: '0.85rem'
+                                                                            }}
+                                                                        >
+                                                                            <div style={{ color: isOwnMessage ? 'rgba(255, 255, 255, 0.9)' : 'var(--colors-accent)', fontWeight: 'bold', marginBottom: '2px' }}>
+                                                                                {msg.replyTo.sender?.displayName || 'Unknown'}
+                                                                            </div>
+                                                                            <div style={{ opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>
+                                                                                {msg.replyTo.content || (msg.replyTo.isCodeSnippet ? 'Code Snippet' : 'Media')}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                     {(() => {
                                                                         const embedData = detectEcosystemLink(msg.content);
 
@@ -2889,53 +2922,70 @@ export default function Dashboard() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <InputArea onSubmit={handleSendMessage} style={{ flexShrink: 0 }}>
-                                            <input
-                                                type="file"
-                                                ref={fileInputRef}
-                                                style={{ display: 'none' }}
-                                                onChange={handleFileSelect}
-                                                accept="image/*,.pdf,.doc,.docx"
-                                            />
-
-                                            <AttachButton
-                                                type="button"
-                                                title="Attach File"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                disabled={isUploading || isRecording}
-                                            >
-                                                {isUploading ? <Spinner /> : <PlusIcon />}
-                                            </AttachButton>
-
-                                            {isRecording ? (
-                                                <VoiceRecordingIndicator time={recordingTime} />
-                                            ) : (
-                                                <Input
-                                                    ref={inputRef}
-                                                    placeholder="Message..."
-                                                    value={messageInput}
-                                                    onChange={handleInputChange}
-                                                    onKeyDown={handleKeyDown}
-                                                    rows={1}
+                                        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, backgroundColor: 'var(--colors-surface)', borderTop: '1px solid var(--colors-border)' }}>
+                                            {replyingToMessage && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', backgroundColor: 'var(--colors-bg)', borderLeft: '4px solid var(--colors-accent)', margin: '8px 16px 0 16px', borderRadius: '4px' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: 'var(--colors-accent)', fontWeight: 'bold' }}>
+                                                            {replyingToMessage.sender?.displayName || 'Someone'}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.9rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {replyingToMessage.content}
+                                                        </span>
+                                                    </div>
+                                                    <IconButton type="button" onClick={() => setReplyingToMessage(null)} style={{ padding: '4px' }}>
+                                                        <X size={16} />
+                                                    </IconButton>
+                                                </div>
+                                            )}
+                                            <InputArea onSubmit={handleSendMessage} style={{ borderTop: 'none', backgroundColor: 'transparent' }}>
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    style={{ display: 'none' }}
+                                                    onChange={handleFileSelect}
+                                                    accept="image/*,.pdf,.doc,.docx"
                                                 />
-                                            )}
 
-                                            {messageInput.trim().length > 0 ? (
-                                                <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
-                                                    <SendIcon />
-                                                </SendButton>
-                                            ) : (
-                                                <SendButton
+                                                <AttachButton
                                                     type="button"
-                                                    title={isRecording ? "Stop Recording" : "Record Voice Note"}
-                                                    onClick={isRecording ? stopRecording : startRecording}
-                                                    disabled={isUploading}
-                                                    style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                    title="Attach File"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    disabled={isUploading || isRecording}
                                                 >
-                                                    {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
-                                                </SendButton>
-                                            )}
-                                        </InputArea>
+                                                    {isUploading ? <Spinner /> : <PlusIcon />}
+                                                </AttachButton>
+
+                                                {isRecording ? (
+                                                    <VoiceRecordingIndicator time={recordingTime} />
+                                                ) : (
+                                                    <Input
+                                                        ref={inputRef}
+                                                        placeholder="Message..."
+                                                        value={messageInput}
+                                                        onChange={handleInputChange}
+                                                        onKeyDown={handleKeyDown}
+                                                        rows={1}
+                                                    />
+                                                )}
+
+                                                {messageInput.trim().length > 0 ? (
+                                                    <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
+                                                        <SendIcon />
+                                                    </SendButton>
+                                                ) : (
+                                                    <SendButton
+                                                        type="button"
+                                                        title={isRecording ? "Stop Recording" : "Record Voice Note"}
+                                                        onClick={isRecording ? stopRecording : startRecording}
+                                                        disabled={isUploading}
+                                                        style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                    >
+                                                        {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
+                                                    </SendButton>
+                                                )}
+                                            </InputArea>
+                                        </div>
                                     )}
                                 </>
                             ) : communityTab === 'live coding' ? (
