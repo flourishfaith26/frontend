@@ -20,17 +20,18 @@ import { useNavigate } from 'react-router-dom';
 const AppContainer = styled('div', {
     display: 'flex',
     flexDirection: 'row',
-    height: '100vh',
-    '@supports (height: 100dvh)': {
-        height: '100dvh',
-    },
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: '100%',
     overflowX: 'hidden',
-    position: 'relative',
     backgroundColor: '$surface',
     '@media (max-width: 768px)': {
         flexDirection: 'column-reverse',
         paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
     }
 });
 
