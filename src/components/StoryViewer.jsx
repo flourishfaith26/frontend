@@ -98,7 +98,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
     return (
         <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100vh', minHeight: '100dvh',
             backgroundColor: '#000', zIndex: 9999, display: 'flex', flexDirection: 'column',
             fontFamily: 'system-ui, -apple-system, sans-serif'
         }}>

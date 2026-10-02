@@ -56,8 +56,25 @@ export const globalStyles = globalCss({
         color: '$textMain',
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         height: '100vh',
-        width: '100vw',
-        overflow: 'hidden',
+        minHeight: '100dvh',
+        width: '100%',
+        overflowX: 'hidden',
+        overflowY: 'hidden',
+    },
+    'input, select, textarea': {
+        '@media (max-width: 768px)': {
+            fontSize: '16px', // Prevents iOS Safari auto-zoom
+        }
+    },
+    'button, a, [role="button"], [class*="icon-trigger"]': {
+        '@media (max-width: 768px)': {
+            minHeight: '44px',
+            minWidth: '44px',
+        }
+    },
+    'img, svg': {
+        maxWidth: '100%',
+        height: 'auto',
     },
     '#root': {
         height: '100%',

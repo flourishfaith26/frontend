@@ -77,7 +77,7 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
 
     return (
         <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100vh', minHeight: '100dvh',
             backgroundColor: mode === 'text' ? BACKGROUND_COLORS[bgColorIndex] : '#000', zIndex: 10000,
             display: 'flex', flexDirection: 'column',
             fontFamily: 'system-ui, -apple-system, sans-serif'

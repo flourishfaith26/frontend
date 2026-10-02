@@ -16,6 +16,11 @@ const glowPulse = keyframes({
 
 const HomeContainer = styled('div', {
     minHeight: '100vh',
+    '@supports (min-height: 100dvh)': {
+        minHeight: '100dvh',
+    },
+    width: '100%',
+    overflowX: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: '$bg',
@@ -32,7 +37,10 @@ const HeroSection = styled('section', {
     minHeight: '70vh',
     textAlign: 'center',
     position: 'relative',
-    overflow: 'hidden',
+    overflowX: 'hidden',
+    '@media (max-width: 768px)': {
+        padding: '$4 16px',
+    }
 });
 
 const GlowBackground = styled('div', {
@@ -54,6 +62,9 @@ const Title = styled('h1', {
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     zIndex: 1,
+    '@media (max-width: 768px)': {
+        fontSize: '2.5rem',
+    }
 });
 
 const Subtitle = styled('p', {

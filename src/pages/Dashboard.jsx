@@ -21,10 +21,14 @@ const AppContainer = styled('div', {
     display: 'flex',
     flexDirection: 'row',
     height: '100vh',
+    minHeight: '100dvh',
+    width: '100%',
+    overflowX: 'hidden',
     position: 'relative',
     backgroundColor: '$surface',
     '@media (max-width: 768px)': {
         flexDirection: 'column-reverse',
+        paddingTop: 'env(safe-area-inset-top)',
     }
 });
 
@@ -42,10 +46,10 @@ const NavRail = styled('nav', {
     },
     '@media (max-width: 768px)': {
         width: '100%',
-        height: '60px',
+        height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
         flexDirection: 'row',
         justifyContent: 'space-between',
-        padding: '0 $2',
+        padding: '0 $2 env(safe-area-inset-bottom, 0px) $2',
         borderRight: 'none',
         borderTop: '1px solid $border',
     },
@@ -208,6 +212,7 @@ const Sidebar = styled('aside', {
     },
     '@media (max-width: 768px)': {
         width: '100%',
+        padding: '16px',
         borderRight: 'none',
     },
     variants: {

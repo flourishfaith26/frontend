@@ -11,11 +11,14 @@ const float = keyframes({
 
 const PageContainer = styled('div', {
     minHeight: '100vh',
+    '@supports (min-height: 100dvh)': {
+        minHeight: '100dvh',
+    },
     display: 'flex',
     backgroundColor: '$bg',
     color: '$textMain',
     fontFamily: 'system-ui, sans-serif',
-    overflow: 'hidden',
+    overflowX: 'hidden',
 });
 
 const LeftPanel = styled('div', {
@@ -42,7 +45,11 @@ const RightPanel = styled('div', {
     position: 'relative',
     zIndex: 1,
     boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
-    overflowY: 'auto'
+    overflowY: 'auto',
+    '@media (max-width: 768px)': {
+        padding: '16px env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)',
+        width: '100%',
+    }
 });
 
 const LogoContainer = styled('div', {

@@ -16,7 +16,10 @@ const PaneContainer = styled('div', {
     overflowY: 'auto',
     animation: `${slideIn} 0.2s ease-out`,
     color: '$textMain',
-    padding: '0 max(20px, calc(50% - 360px))'
+    padding: '0 max(20px, calc(50% - 360px))',
+    '@media (max-width: 768px)': {
+        padding: '0 16px env(safe-area-inset-bottom)',
+    }
 });
 
 const PaneHeader = styled('div', {
@@ -28,7 +31,10 @@ const PaneHeader = styled('div', {
     position: 'sticky',
     top: 0,
     zIndex: 10,
-    borderBottom: '1px solid rgba(255,255,255,0.05)'
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    '@media (max-width: 768px)': {
+        padding: '24px 0 16px',
+    }
 });
 
 const HeaderTitle = styled('h2', {

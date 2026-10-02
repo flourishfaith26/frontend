@@ -9,6 +9,7 @@ import AuthPage from './pages/AuthPage';
 // Custom Stitches loading container
 const LoadingContainer = styled('div', {
   height: '100vh',
+  minHeight: '100dvh',
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',

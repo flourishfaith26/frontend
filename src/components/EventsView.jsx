@@ -12,6 +12,7 @@ const Container = styled('div', {
     padding: '32px 48px',
     backgroundColor: 'var(--colors-bg)',
     overflowY: 'auto',
+    overflowX: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     gap: '32px',
@@ -22,6 +23,9 @@ const Container = styled('div', {
         top: 0, left: 0, right: 0, height: '400px',
         background: 'linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, rgba(15, 23, 42, 0) 100%)',
         pointerEvents: 'none'
+    },
+    '@media (max-width: 768px)': {
+        padding: '16px',
     }
 });
 
@@ -51,7 +55,10 @@ const Grid = styled('div', {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
     gap: '24px',
-    animation: `${fadeIn} 0.6s ease-out 0.1s both`
+    animation: `${fadeIn} 0.6s ease-out 0.1s both`,
+    '@media (max-width: 768px)': {
+        gridTemplateColumns: '1fr',
+    }
 });
 
 const Card = styled('div', {

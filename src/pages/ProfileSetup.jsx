@@ -22,13 +22,17 @@ const PageContainer = styled('div', {
   flex: 1,
   width: '100%',
   overflowY: 'auto',
+  overflowX: 'hidden',
   backgroundColor: '$bg',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'flex-start',
   padding: '40px 20px',
-  backgroundImage: 'radial-gradient(circle at 50% -20%, rgba(6,182,212,0.15), transparent 50%)'
+  backgroundImage: 'radial-gradient(circle at 50% -20%, rgba(6,182,212,0.15), transparent 50%)',
+  '@media (max-width: 768px)': {
+      padding: '16px env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)',
+  }
 });
 
 const FormContainer = styled('div', {
@@ -51,6 +55,9 @@ const Header = styled('div', {
   borderBottom: '1px solid $border',
   textAlign: 'center',
   background: 'linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(0,0,0,0) 100%)',
+  '@media (max-width: 768px)': {
+      padding: '24px 16px',
+  }
 });
 
 const Title = styled('h1', {

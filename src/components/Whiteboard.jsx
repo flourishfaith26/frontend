@@ -115,6 +115,9 @@ const MainArea = styled('div', {
     display: 'flex',
     flex: 1,
     overflow: 'hidden',
+    '@media (max-width: 768px)': {
+        flexDirection: 'column-reverse',
+    }
 });
 
 const Sidebar = styled('div', {
@@ -125,7 +128,17 @@ const Sidebar = styled('div', {
     flexDirection: 'column',
     padding: '16px',
     gap: '12px',
-    overflowY: 'auto'
+    overflowY: 'auto',
+    '@media (max-width: 768px)': {
+        width: '100%',
+        flexDirection: 'row',
+        height: 'auto',
+        maxHeight: '120px',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        borderRight: 'none',
+        borderTop: '1px solid $border',
+    }
 });
 
 const SidebarItem = styled('div', {
