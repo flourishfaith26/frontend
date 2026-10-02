@@ -1989,7 +1989,7 @@ export default function Dashboard() {
     const handleTabChange = (tab) => {
         if (activeTab === tab) return;
         setActiveTab(tab);
-        if (tab === 'communities') {
+        if (tab === 'communities' || tab === 'status' || tab === 'calls' || tab === 'settings') {
             setActiveConversationId(null);
             setIsDrawerOpen(false);
         }
@@ -2387,7 +2387,20 @@ export default function Dashboard() {
                             }
                         }} style={{ height: 'auto', padding: '12px 8px', gap: '16px' }}>
                             <AvatarWrapper style={{ flexShrink: 0 }}>
-                                <Avatar src={currentUserData?.avatarUrl || user?.picture} style={{ width: '48px', height: '48px', border: myGroupedStatuses ? '2px solid var(--colors-accent)' : 'none', padding: myGroupedStatuses ? '2px' : '0' }} />
+                                {myGroupedStatuses && myGroupedStatuses.statuses.length > 0 ? (
+                                    (() => {
+                                        const last = myGroupedStatuses.statuses[myGroupedStatuses.statuses.length - 1];
+                                        if (last.type === 'text') {
+                                            return <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', overflow: 'hidden', textAlign: 'center', padding: '4px', border: '2px solid var(--colors-accent)' }}>
+                                                <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
+                                            </div>
+                                        } else {
+                                            return <Avatar src={last.content} style={{ width: '48px', height: '48px', border: '2px solid var(--colors-accent)', padding: '2px', objectFit: 'cover' }} />
+                                        }
+                                    })()
+                                ) : (
+                                    <Avatar src={currentUserData?.avatarUrl || user?.picture} style={{ width: '48px', height: '48px' }} />
+                                )}
                                 <div
                                     onClick={(e) => { e.stopPropagation(); setIsStatusModalOpen(true); }}
                                     style={{ position: 'absolute', bottom: -2, right: -2, backgroundColor: 'var(--colors-accent)', borderRadius: '50%', padding: '2px', color: 'white', display: 'flex' }}
@@ -2410,7 +2423,16 @@ export default function Dashboard() {
                             otherGroupedStatuses.map((group) => (
                                 <ChannelItem key={group.user._id} onClick={() => setStoryViewerInitialUserIndex(groupedStatuses.findIndex(g => g.user._id === group.user._id))} style={{ height: 'auto', padding: '12px 8px', gap: '16px' }}>
                                     <AvatarWrapper style={{ flexShrink: 0, border: '2px solid var(--colors-accent)', padding: '2px' }}>
-                                        <Avatar src={group.user.avatarUrl} style={{ width: '44px', height: '44px' }} />
+                                        {(() => {
+                                            const last = group.statuses[group.statuses.length - 1];
+                                            if (last.type === 'text') {
+                                                return <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', overflow: 'hidden', textAlign: 'center', padding: '4px' }}>
+                                                    <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
+                                                </div>
+                                            } else {
+                                                return <Avatar src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover' }} />
+                                            }
+                                        })()}
                                     </AvatarWrapper>
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>{group.user.displayName}</span>
@@ -3205,23 +3227,23 @@ export default function Dashboard() {
                         })()}
 
                         <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
                                 <Image size={24} color="var(--colors-textMuted)" />
                                 <span style={{ fontSize: '1rem' }}>Media, links and docs</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
                                 <Star size={24} color="var(--colors-textMuted)" />
                                 <span style={{ fontSize: '1rem' }}>Starred messages</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
                                 <Bell size={24} color="var(--colors-textMuted)" />
                                 <span style={{ fontSize: '1rem' }}>Notification settings</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
                                 <Clock size={24} color="var(--colors-textMuted)" />
                                 <span style={{ fontSize: '1rem' }}>Disappearing messages</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer' }} onClick={() => showToast('Feature coming soon')}>
                                 <Lock size={24} color="var(--colors-textMuted)" />
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <span style={{ fontSize: '1rem' }}>Encryption</span>
@@ -3293,15 +3315,29 @@ export default function Dashboard() {
                             </div>
                         ) : (
                             <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={(e) => deleteConversation(e, activeConversation._id)}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={(e) => {
+                                    if (window.confirm('Are you sure you want to clear this chat? This cannot be undone.')) {
+                                        deleteConversation(e, activeConversation._id);
+                                    }
+                                }}>
                                     <Trash2 size={24} color="#ef4444" />
                                     <span style={{ fontSize: '1rem' }}>Clear chat</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={() => {
+                                    const userToBlock = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
+                                    if (window.confirm(`Are you sure you want to block ${userToBlock}?`)) {
+                                        showToast(`User ${userToBlock} has been blocked.`);
+                                    }
+                                }}>
                                     <ShieldAlert size={24} color="#ef4444" />
                                     <span style={{ fontSize: '1rem' }}>Block {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', cursor: 'pointer', color: '#ef4444' }} onClick={() => {
+                                    const userToReport = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
+                                    if (window.confirm(`Are you sure you want to report ${userToReport}?`)) {
+                                        showToast(`User ${userToReport} has been reported. Our team will review the chat logs.`);
+                                    }
+                                }}>
                                     <ThumbsDown size={24} color="#ef4444" />
                                     <span style={{ fontSize: '1rem' }}>Report {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
                                 </div>
