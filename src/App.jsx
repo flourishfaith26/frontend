@@ -41,7 +41,6 @@ const Auth0ProviderWithNavigate = ({ children }) => {
         audience: "https://devsup-api"
       }}
       cacheLocation="localstorage"
-      useRefreshTokens={true}
       onRedirectCallback={onRedirectCallback}
     >
       {children}
