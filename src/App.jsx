@@ -1,5 +1,5 @@
-import { useAuth0 } from '@auth0/auth0-react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { styled } from './stitches.config.js';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
@@ -19,7 +19,37 @@ const LoadingContainer = styled('div', {
   fontFamily: 'system-ui, sans-serif'
 });
 
-function App() {
+const Auth0ProviderWithNavigate = ({ children }) => {
+  const navigate = useNavigate();
+  const domain = import.meta.env.VITE_AUTH0_DOMAIN;
+  const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
+
+  const onRedirectCallback = (appState) => {
+    navigate(appState?.returnTo || '/dashboard', { replace: true });
+  };
+
+  if (!(domain && clientId)) {
+    return null;
+  }
+
+  return (
+    <Auth0Provider
+      domain={domain}
+      clientId={clientId}
+      authorizationParams={{
+        redirect_uri: window.location.origin,
+        audience: "https://devsup-api"
+      }}
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
+      onRedirectCallback={onRedirectCallback}
+    >
+      {children}
+    </Auth0Provider>
+  );
+};
+
+function AppRoutes() {
   const { isAuthenticated, isLoading, error } = useAuth0();
 
   if (error) {
@@ -40,25 +70,32 @@ function App() {
   }
 
   return (
+    <Routes>
+      <Route 
+        path="/" 
+        element={!isAuthenticated ? <Home /> : <Navigate to="/dashboard" replace />} 
+      />
+      <Route 
+        path="/login" 
+        element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
+      />
+      <Route 
+        path="/dashboard" 
+        element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} 
+      />
+      <Route 
+        path="/setup" 
+        element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/" replace />} 
+      />
+    </Routes>
+  );
+}
+function App() {
+  return (
     <Router>
-      <Routes>
-        <Route 
-          path="/" 
-          element={!isAuthenticated ? <Home /> : <Navigate to="/dashboard" replace />} 
-        />
-        <Route 
-          path="/login" 
-          element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
-        />
-        <Route 
-          path="/dashboard" 
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} 
-        />
-        <Route 
-          path="/setup" 
-          element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/" replace />} 
-        />
-      </Routes>
+      <Auth0ProviderWithNavigate>
+        <AppRoutes />
+      </Auth0ProviderWithNavigate>
     </Router>
   );
 }
