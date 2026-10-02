@@ -79,9 +79,7 @@ const NavRailBottom = styled('div', {
     gap: '12px',
     paddingBottom: '$2',
     '@media (max-width: 768px)': {
-        flexDirection: 'row',
-        paddingBottom: '0',
-        gap: '8px',
+        display: 'none',
     }
 });
 
@@ -251,6 +249,20 @@ const IconButton = styled('button', {
                 }
             }
         }
+    }
+});
+
+const MobileOnlyText = styled('span', {
+    display: 'none',
+    '@media (max-width: 768px)': {
+        display: 'inline',
+    }
+});
+
+const DesktopOnlyText = styled('span', {
+    display: 'inline',
+    '@media (max-width: 768px)': {
+        display: 'none',
     }
 });
 
@@ -2155,7 +2167,10 @@ export default function Dashboard() {
                     <>
                         <div style={{ padding: '16px 20px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
-                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>Chats</h2>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
+                                    <MobileOnlyText>DevSup</MobileOnlyText>
+                                    <DesktopOnlyText>Chats</DesktopOnlyText>
+                                </h2>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <IconButton title="New Chat" onClick={openCreateModal} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
                                         <Plus size={20} />
@@ -2621,12 +2636,19 @@ export default function Dashboard() {
                                                 />
                                             </AvatarWrapper>
                                             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-                                                <span style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {activeConversation.type === 'group'
-                                                        ? activeConversation.name
-                                                        : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Direct Message')}
-                                                    {mutedConversations.includes(activeConversation._id) && <BellOff size={14} color="var(--colors-textMuted)" />}
-                                                    {disappearingConversations.includes(activeConversation._id) && <Timer size={14} color="var(--colors-accent)" />}
+                                                <span style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                                    {(() => {
+                                                        const name = activeConversation.type === 'group'
+                                                            ? activeConversation.name
+                                                            : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Direct Message');
+                                                        return name.length > 20 ? (
+                                                            <marquee scrollamount="4" style={{ flex: 1, maxWidth: '150px' }}>{name}</marquee>
+                                                        ) : (
+                                                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>{name}</span>
+                                                        );
+                                                    })()}
+                                                    {mutedConversations.includes(activeConversation._id) && <BellOff size={14} color="var(--colors-textMuted)" style={{ flexShrink: 0 }} />}
+                                                    {disappearingConversations.includes(activeConversation._id) && <Timer size={14} color="var(--colors-accent)" style={{ flexShrink: 0 }} />}
                                                 </span>
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {activeConversation.type === 'group' ? activeConversation.participants?.map(p => p._id === mongoUserId ? 'You' : p.displayName).join(', ') : 'click here for contact info'}
@@ -2668,11 +2690,10 @@ export default function Dashboard() {
                                     <IconButton onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' })} title="Voice Call">
                                         <Phone size={20} />
                                     </IconButton>
-                                    <IconButton desktopOnly onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
+                                    <IconButton onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
                                         <Search size={20} />
                                     </IconButton>
                                     <IconButton
-                                        desktopOnly
                                         onClick={() => {
                                             if (activeTab === 'communities') {
                                                 setCommunityTab('live coding');
