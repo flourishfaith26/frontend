@@ -192,12 +192,13 @@ const CallOverlay = ({
         }
     }, [toastMsg]);
 
-    useEffect(() => {
+        useEffect(() => {
         if (!callConfig || !callConfig.active) return;
 
         // Initialize user media
         const initMedia = async () => {
             try {
+                if (!navigator.mediaDevices) throw new Error("MediaDevices not supported (HTTPS required on mobile).");
                 const currentStream = await navigator.mediaDevices.getUserMedia({ 
                     video: callConfig.callType === 'video', 
                     audio: true 
@@ -213,12 +214,16 @@ const CallOverlay = ({
                 }
             } catch (err) {
                 console.error("Failed to get local stream", err);
-                alert("Could not access camera/microphone");
-                handleEndCall();
+                if (!callConfig.isReceiving) {
+                    alert("Could not access camera/microphone");
+                    handleEndCall();
+                }
             }
         };
 
-        initMedia();
+        if (!callConfig.isReceiving) {
+            initMedia();
+        }
 
         return () => {
             if (stream) {
@@ -295,9 +300,9 @@ const CallOverlay = ({
             }
         };
 
-        if (stream) {
-            stream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, stream);
+                if (localStream) {
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
             });
         }
 
@@ -342,11 +347,31 @@ const CallOverlay = ({
         });
     };
 
-    const answerCall = async () => {
+        const answerCall = async () => {
+        let currentStream = stream;
+        if (!currentStream) {
+            try {
+                if (!navigator.mediaDevices) throw new Error("MediaDevices not supported (HTTPS required on mobile).");
+                currentStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: callConfig.callType === 'video', 
+                    audio: true 
+                });
+                setStream(currentStream);
+                if (myVideo.current) {
+                    myVideo.current.srcObject = currentStream;
+                }
+            } catch (err) {
+                console.error("Failed to get local stream", err);
+                alert("Could not access camera/microphone. Please ensure you are using HTTPS or localhost.");
+                handleEndCall();
+                return;
+            }
+        }
+
         setCallAccepted(true);
         callAcceptedRef.current = true;
 
-        const peerConnection = createPeerConnection(callConfig.callerData.from);
+        const peerConnection = createPeerConnection(callConfig.callerData.from, currentStream);
         connectionRef.current = peerConnection;
 
         await peerConnection.setRemoteDescription(new RTCSessionDescription(callConfig.callerData.signal));

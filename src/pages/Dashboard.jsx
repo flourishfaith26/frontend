@@ -1147,6 +1147,31 @@ const formatMessageTime = (dateString, isMessageList = false) => {
     }
 };
 
+const formatMessageDate = (dateString) => {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.round((startOfToday.getTime() - startOfDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+
+    return date.toLocaleDateString([], {
+        month: 'long',
+        day: 'numeric',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+};
+
+const formatMessageClock = (dateString) => {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 // --- Main Dashboard Component ---
 export default function Dashboard() {
     const { user, logout, getAccessTokenSilently } = useAuth0();
@@ -1160,6 +1185,8 @@ export default function Dashboard() {
     const [chatSearchQuery, setChatSearchQuery] = useState('');
     const [activeConversationId, setActiveConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
+    const [messageDateLabel, setMessageDateLabel] = useState('');
+    const [showMessageDateLabel, setShowMessageDateLabel] = useState(false);
 
     // Status State
     const [statuses, setStatuses] = useState([]);
@@ -1412,9 +1439,40 @@ export default function Dashboard() {
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
     const messagesEndRef = useRef(null);
+    const messageListRef = useRef(null);
+    const messageDateHideTimerRef = useRef(null);
     const touchHoldTimer = useRef(null);
     const touchStartCoords = useRef({ x: 0, y: 0 });
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+    const handleMessageListScroll = () => {
+        const messageList = messageListRef.current;
+        if (!messageList) return;
+
+        const listTop = messageList.getBoundingClientRect().top;
+        const visibleMessages = messageList.querySelectorAll('[data-message-date]');
+        const currentMessage = Array.from(visibleMessages).find(
+            element => element.getBoundingClientRect().bottom > listTop + 48
+        );
+
+        if (currentMessage) {
+            setMessageDateLabel(currentMessage.dataset.messageDate);
+            setShowMessageDateLabel(true);
+        }
+
+        if (messageDateHideTimerRef.current) {
+            clearTimeout(messageDateHideTimerRef.current);
+        }
+        messageDateHideTimerRef.current = setTimeout(() => {
+            setShowMessageDateLabel(false);
+        }, 3000);
+    };
+
+    useEffect(() => () => {
+        if (messageDateHideTimerRef.current) {
+            clearTimeout(messageDateHideTimerRef.current);
+        }
+    }, []);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -2266,9 +2324,14 @@ export default function Dashboard() {
             <Sidebar className={showChatArea ? 'mobile-hidden' : ''}>
                 {activeTab === 'calls' && (
                     <>
-                        <SidebarHeader>
-                            <SectionTitle>Recent Calls</SectionTitle>
-                        </SidebarHeader>
+                        <div style={{ padding: '16px 20px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
+                                    <MobileOnlyText>DevSup</MobileOnlyText>
+                                    <DesktopOnlyText>Recent Calls</DesktopOnlyText>
+                                </h2>
+                            </div>
+                        </div>
                         {callLogs.length === 0 ? (
                             <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
                                 <Phone size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
@@ -2303,9 +2366,16 @@ export default function Dashboard() {
                                                 <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</span>
                                             </div>
                                         </div>
-                                        <div>
-                                            {log.type === 'video' ? <Video size={20} color="var(--colors-textMuted)" /> : <Phone size={20} color="var(--colors-textMuted)" />}
-                                        </div>
+                                        <IconButton
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openConversationWith(log.contactId, log.type === 'video' ? 'video' : 'audio');
+                                            }}
+                                            style={{ color: 'var(--colors-textMuted)' }}
+                                            title={log.type === 'video' ? 'Start video call' : 'Start voice call'}
+                                        >
+                                            {log.type === 'video' ? <Video size={20} /> : <Phone size={20} />}
+                                        </IconButton>
                                     </ChannelItem>
                                 ))}
                             </div>
@@ -2487,22 +2557,85 @@ export default function Dashboard() {
 
                 {activeTab === 'communities' && (
                     <>
-                        <SidebarHeader>
-                            <SectionTitle>Communities</SectionTitle>
-                            <IconButton title="New Community" onClick={() => { setConvType('group'); setIsModalOpen(true); }}>
-                                <PlusIcon />
-                            </IconButton>
-                        </SidebarHeader>
+                        <div style={{ padding: '16px 20px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
+                                    <MobileOnlyText>DevSup</MobileOnlyText>
+                                    <DesktopOnlyText>Communities</DesktopOnlyText>
+                                </h2>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <IconButton title="New Community" onClick={() => { setConvType('group'); setIsModalOpen(true); }} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
+                                        <Plus size={20} />
+                                    </IconButton>
+                                    <div style={{ position: 'relative' }}>
+                                        <IconButton title="Menu" onClick={() => setIsChatsMenuOpen(!isChatsMenuOpen)} style={{ backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}>
+                                            <MoreVertical size={20} />
+                                        </IconButton>
+                                        {isChatsMenuOpen && (
+                                            <>
+                                                <div
+                                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1999 }}
+                                                    onClick={() => setIsChatsMenuOpen(false)}
+                                                />
+                                                <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '12px', zIndex: 2000 }}>
+                                                    <ContextMenuItem onClick={() => { handleTabChange('settings'); setIsChatsMenuOpen(false); }}>
+                                                        <Settings size={18} style={{ opacity: 0.8 }} />
+                                                        Settings
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { setIsLogoutModalOpen(true); setIsChatsMenuOpen(false); }}>
+                                                        <LogOut size={18} style={{ opacity: 0.8 }} />
+                                                        Log out
+                                                    </ContextMenuItem>
+                                                </ContextMenuContainer>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                backgroundColor: 'var(--colors-bg)', 
+                                padding: '8px 12px', 
+                                borderRadius: '8px', 
+                                gap: '12px',
+                                marginBottom: '16px'
+                            }}>
+                                <Search size={18} color="var(--colors-textMuted)" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search communities"
+                                    value={chatSearchQuery}
+                                    onChange={(e) => setChatSearchQuery(e.target.value)}
+                                    style={{ 
+                                        border: 'none', 
+                                        background: 'transparent', 
+                                        outline: 'none', 
+                                        color: 'var(--colors-textMain)', 
+                                        fontSize: '0.95rem',
+                                        width: '100%'
+                                    }}
+                                />
+                            </div>
+                        </div>
 
-                        {conversations.filter(c => c.type === 'group').length === 0 ? (
-                            <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>No communities yet.</div>
+                        {conversations.filter(c => {
+                            if (c.type !== 'group') return false;
+                            if (!chatSearchQuery) return true;
+                            return c.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                        }).length === 0 ? (
+                            <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>No communities found.</div>
                         ) : (
-                            [...conversations].filter(c => c.type === 'group').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(conv => (
+                            [...conversations].filter(c => {
+                                if (c.type !== 'group') return false;
+                                if (!chatSearchQuery) return true;
+                                return c.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                            }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(conv => (
                                 <ChannelItem
                                     key={conv._id}
                                     active={activeConversationId === conv._id}
                                     onClick={() => { setActiveConversationId(conv._id); setCommunityTab('chat'); }}
-                                    style={{ padding: '8px 12px', borderBottom: '1px solid var(--colors-border)', borderRadius: 0, gap: '12px', alignItems: 'center', margin: 0 }}
+                                    style={{ padding: '12px 20px', borderRadius: 0, gap: '16px', alignItems: 'center', margin: 0, borderBottom: 'none' }}
                                     onMouseEnter={(e) => {
                                         const btn = e.currentTarget.querySelector('.conv-delete-btn');
                                         if (btn) btn.style.opacity = 1;
@@ -2512,16 +2645,16 @@ export default function Dashboard() {
                                         if (btn) btn.style.opacity = 0;
                                     }}
                                 >
-                                    <AvatarWrapper style={{ flexShrink: 0 }}>
+                                    <AvatarWrapper style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <Avatar
                                             src={conv.avatarUrl || `https://ui-avatars.com/api/?name=${conv.name}&background=06B6D4&color=fff`}
-                                            style={{ width: '40px', height: '40px', borderRadius: '50%', border: 'none' }}
+                                            style={{ width: '48px', height: '48px', border: 'none', flexShrink: 0 }}
                                         />
                                     </AvatarWrapper>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                                            <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            <span style={{ fontSize: '0.95rem', fontWeight: conv.unreadCount > 0 ? '600' : '500', color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {conv.name}
                                             </span>
                                             {conv.lastMessage && (
@@ -2804,7 +2937,7 @@ export default function Dashboard() {
                         }}>
                             <CircleDashed size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
                         </div>
-                        <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>DevSup Status</h2>
+                        <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Status</h2>
                         <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
                             Share ephemeral updates with your developer community. Statuses automatically disappear after 24 hours.
                         </p>
@@ -2823,7 +2956,7 @@ export default function Dashboard() {
                         }}>
                             <Phone size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
                         </div>
-                        <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>DevSup Calls</h2>
+                        <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Calls</h2>
                         <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
                             Connect instantly with crystal-clear voice and video. Start a call from any of your chats.
                         </p>
@@ -3057,13 +3190,44 @@ export default function Dashboard() {
 
                             {(!activeConversation || activeTab === 'chats' || (activeTab === 'communities' && communityTab === 'chat')) ? (
                                 <>
-                                    <MessageList style={{
+                                    <MessageList
+                                        ref={messageListRef}
+                                        onScroll={handleMessageListScroll}
+                                        style={{
                                         '--wallpaper-url': appSettings.wallpaperUrl ? `url("${appSettings.wallpaperUrl}")` : 'none',
                                         '--wallpaper-darken': 1 - (appSettings.wallpaperBrightness !== undefined ? appSettings.wallpaperBrightness : 100) / 100,
                                         '--wallpaper-size': appSettings.wallpaperType === 'custom' ? 'cover' : '400px',
                                         '--wallpaper-bg-color': appSettings.wallpaperBgColor || '#0b141a',
                                         flex: 1
                                     }}>
+                                        {messageDateLabel && (
+                                            <div
+                                                role="status"
+                                                aria-live="polite"
+                                                aria-hidden={!showMessageDateLabel}
+                                                style={{
+                                                position: 'absolute',
+                                                top: '8px',
+                                                left: '50%',
+                                                transform: 'translateX(-50%)',
+                                                zIndex: 10,
+                                                padding: '6px 12px',
+                                                borderRadius: '999px',
+                                                backgroundColor: 'rgba(30, 41, 59, 0.88)',
+                                                color: '#e9edef',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 500,
+                                                lineHeight: 1.2,
+                                                border: 'none',
+                                                outline: 'none',
+                                                boxShadow: 'none',
+                                                pointerEvents: 'none',
+                                                opacity: showMessageDateLabel ? 1 : 0,
+                                                transition: 'opacity 180ms ease',
+                                            }}>
+                                                {messageDateLabel}
+                                            </div>
+                                        )}
                                         {messages.length === 0 ? (
                                             <div style={{ textAlign: 'center', marginTop: '2rem' }}>
                                                 Welcome to the beginning of the conversation.
@@ -3080,7 +3244,7 @@ export default function Dashboard() {
                                                     const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     return (
-                                                        <div id={`message-${msg._id || msg.createdAt}`} key={msg._id || msg.createdAt} style={{ 
+                                                        <div key={msg._id || msg.createdAt} id={`message-${msg._id || msg.createdAt}`} data-message-date={formatMessageDate(msg.createdAt)} style={{ 
                                                             display: 'flex', 
                                                             flexDirection: isOwnMessage ? 'row-reverse' : 'row', 
                                                             alignItems: 'center', 
@@ -3175,6 +3339,28 @@ export default function Dashboard() {
                                                                             );
                                                                         }
 
+                                                                        
+                                                                        const isCallLog = msg.content && typeof msg.content === 'string' && msg.content.startsWith('$CALL_LOG$');
+                                                                        if (isCallLog) {
+                                                                            const parts = msg.content.split('|');
+                                                                            const callType = parts[1];
+                                                                            const callStatus = parts[2];
+                                                                            
+                                                                            return (
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                    {callType === 'video' ? <Video size={18} color="rgba(255,255,255,0.7)" /> : <Phone size={18} color="rgba(255,255,255,0.7)" />}
+                                                                                    <div>
+                                                                                        <div style={{ fontWeight: '500', color: 'var(--colors-textMain)' }}>
+                                                                                            {callType === 'video' ? 'Video call' : 'Voice call'}
+                                                                                        </div>
+                                                                                        <div style={{ fontSize: '0.85rem', color: callStatus === 'missed' ? '#ef4444' : 'var(--colors-textMuted)' }}>
+                                                                                            {callStatus === 'missed' ? 'Missed' : callStatus === 'rejected' ? 'Declined' : 'Completed'}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        }
+
                                                                         // Check if message is strictly just a URL
                                                                         const isOnlyUrl = (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
                                                                         const hasAttachment = embedData || isImageUrl(msg.content) || isAudioUrl(msg.content) || isCloudinaryUrl(msg.content);
@@ -3255,7 +3441,7 @@ export default function Dashboard() {
 
                                                                 <MessageTime isOwn={isOwnMessage}>
                                                                     {msg.isEdited && <i style={{ marginRight: '4px' }}>edited</i>}
-                                                                    {formatMessageTime(msg.createdAt, true)}
+                                                                    {formatMessageClock(msg.createdAt)}
                                                                     {isOwnMessage && (
                                                                         <span style={{ marginLeft: '4px', display: 'inline-flex', alignItems: 'center' }}>
                                                                             {(() => {

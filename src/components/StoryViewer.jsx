@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Eye, EyeOff, ChevronLeft, ChevronRight, MoreVertical, Forward, RefreshCw, Trash2 } from 'lucide-react';
+import { X, Eye, EyeOff, MoreVertical, Forward, RefreshCw, Trash2 } from 'lucide-react';
 
 const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUserId, markViewed, onDelete, onForward, onReshare, readReceipts = true }) => {
     const [userIndex, setUserIndex] = useState(initialUserIndex);
@@ -13,6 +13,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
     const [progress, setProgress] = useState(0);
     const [showMenu, setShowMenu] = useState(false);
     const [showViewers, setShowViewers] = useState(false);
+    const [transitionDirection, setTransitionDirection] = useState('next');
     
     const touchStartY = useRef(0);
     const touchCurrentY = useRef(0);
@@ -89,6 +90,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
     const handleNext = () => {
         setProgress(0);
+        setTransitionDirection('next');
         if (statusIndex < currentStatuses.length - 1) {
             setStatusIndex(prev => prev + 1);
         } else if (userIndex < groupedStatuses.length - 1) {
@@ -108,6 +110,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
     const handlePrev = () => {
         setProgress(0);
+        setTransitionDirection('previous');
         if (statusIndex > 0) {
             setStatusIndex(prev => prev - 1);
         } else if (userIndex > 0) {
@@ -235,35 +238,31 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
             </div>
 
             {/* Click/Hold Areas */}
-            <div 
+            <button
+                type="button"
+                aria-label="Previous status"
                 className="story-nav-area left-nav"
-                style={{ position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', zIndex: 5, display: 'flex', alignItems: 'center', paddingLeft: '24px', cursor: 'pointer' }}
+                style={{ position: 'absolute', top: 0, left: 0, width: '50%', height: '100%', zIndex: 5, background: 'transparent', border: 0, padding: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
                 onClick={handlePrev}
                 onMouseDown={() => setIsPaused(true)}
                 onMouseUp={() => setIsPaused(false)}
                 onTouchStart={() => setIsPaused(true)}
                 onTouchEnd={() => setIsPaused(false)}
-            >
-                <div className="nav-btn" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff', backdropFilter: 'blur(4px)', transition: 'all 0.2s' }}>
-                    <ChevronLeft size={32} />
-                </div>
-            </div>
-            <div 
+            />
+            <button
+                type="button"
+                aria-label="Next status"
                 className="story-nav-area right-nav"
-                style={{ position: 'absolute', top: 0, right: 0, width: '70%', height: '100%', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '24px', cursor: 'pointer' }}
+                style={{ position: 'absolute', top: 0, right: 0, width: '50%', height: '100%', zIndex: 5, background: 'transparent', border: 0, padding: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
                 onClick={handleNext}
                 onMouseDown={() => setIsPaused(true)}
                 onMouseUp={() => setIsPaused(false)}
                 onTouchStart={() => setIsPaused(true)}
                 onTouchEnd={() => setIsPaused(false)}
-            >
-                <div className="nav-btn" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff', backdropFilter: 'blur(4px)', transition: 'all 0.2s' }}>
-                    <ChevronRight size={32} />
-                </div>
-            </div>
+            />
 
             {/* Content Content */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: currentStatus.type === 'text' ? currentStatus.backgroundColor : 'transparent', position: 'relative', minHeight: 0, overflow: 'hidden', zIndex: 1 }}>
+            <div key={`${userIndex}-${currentStatus._id}`} className={`story-content story-${transitionDirection}`} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: currentStatus.type === 'text' ? currentStatus.backgroundColor : 'transparent', position: 'relative', minHeight: 0, overflow: 'hidden', zIndex: 1 }}>
                 {currentStatus.type === 'text' && (
                     <div style={{ color: '#fff', fontSize: '2rem', textAlign: 'center', padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '80%' }}>
                         {currentStatus.content}
@@ -400,19 +399,25 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
             )}
         </div>
             <style>{`
-                .story-nav-area .nav-btn {
-                    opacity: 0;
-                    transform: scale(0.9);
+                @keyframes story-next {
+                    from { opacity: 0.72; transform: translateX(18px); }
+                    to { opacity: 1; transform: translateX(0); }
                 }
-                .story-nav-area:hover .nav-btn {
-                    opacity: 1;
-                    transform: scale(1);
-                    background-color: rgba(255,255,255,0.3) !important;
+                @keyframes story-previous {
+                    from { opacity: 0.72; transform: translateX(-18px); }
+                    to { opacity: 1; transform: translateX(0); }
                 }
-                @media (max-width: 768px) {
-                    .story-nav-area .nav-btn {
-                        display: none !important;
-                    }
+                .story-next { animation: story-next 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .story-previous { animation: story-previous 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .story-nav-area {
+                    -webkit-tap-highlight-color: transparent !important;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    outline: none;
+                }
+                .story-nav-area:focus:not(:focus-visible) { outline: none; }
+                @media (prefers-reduced-motion: reduce) {
+                    .story-content { animation: none !important; }
                 }
             `}</style>
         </>

@@ -87,6 +87,11 @@ function AppRoutes() {
         path="/setup" 
         element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/" replace />} 
       />
+      {/* Catch-all route for any unmatched paths */}
+      <Route 
+        path="*" 
+        element={<Navigate to={isAuthenticated ? "/dashboard" : "/"} replace />} 
+      />
     </Routes>
   );
 }
