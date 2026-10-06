@@ -458,15 +458,15 @@ const MessageTime = styled('span', {
 });
 const ContextMenuContainer = styled('div', {
     position: 'absolute',
-    backgroundColor: 'rgba(30, 41, 59, 0.85)',
-    backdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '16px',
-    boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backdropFilter: 'blur(24px) saturate(1.2)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '12px',
+    boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.7)',
     zIndex: 2000,
-    minWidth: '240px',
+    minWidth: '220px',
     overflow: 'hidden',
-    padding: '8px',
+    padding: '6px',
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
@@ -1441,6 +1441,7 @@ export default function Dashboard() {
     const messagesEndRef = useRef(null);
     const messageListRef = useRef(null);
     const messageDateHideTimerRef = useRef(null);
+    const lastScrollTopRef = useRef(0);
     const touchHoldTimer = useRef(null);
     const touchStartCoords = useRef({ x: 0, y: 0 });
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -3200,25 +3201,25 @@ export default function Dashboard() {
                                         '--wallpaper-bg-color': appSettings.wallpaperBgColor || '#0b141a',
                                         flex: 1
                                     }}>
-                                        {messageDateLabel && (
+                                        
+                                                                                {messageDateLabel && (
                                             <div
                                                 role="status"
                                                 aria-live="polite"
                                                 aria-hidden={!showMessageDateLabel}
                                                 style={{
                                                 position: 'absolute',
-                                                top: '8px',
+                                                top: '4px',
                                                 left: '50%',
                                                 transform: 'translateX(-50%)',
+                                                backgroundColor: 'rgba(30, 41, 59, 0.85)',
+                                                backdropFilter: 'blur(8px)',
+                                                padding: '4px 12px',
+                                                borderRadius: '16px',
+                                                fontSize: '0.8rem',
+                                                fontWeight: '500',
+                                                color: '#fff',
                                                 zIndex: 10,
-                                                padding: '6px 12px',
-                                                borderRadius: '999px',
-                                                backgroundColor: 'rgba(30, 41, 59, 0.88)',
-                                                color: '#e9edef',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 500,
-                                                lineHeight: 1.2,
-                                                border: 'none',
                                                 outline: 'none',
                                                 boxShadow: 'none',
                                                 pointerEvents: 'none',
@@ -3234,7 +3235,8 @@ export default function Dashboard() {
                                             </div>
                                         ) : (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'flex-start' }}>
-                                                {messages.filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg) => {
+                                                {messages.filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg, index, array) => {
+
                                                     const isOwnMessage = msg.sender?._id === mongoUserId;
                                                     const isGroup = activeConversation?.type === 'group';
                                                     const showSenderName = isGroup && !isOwnMessage;
@@ -3243,8 +3245,29 @@ export default function Dashboard() {
                                                     const isEmbedOnly = isOnlyUrl && !!embedDataTop;
                                                     const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
+                                                    
+                                                    const prevMsg = index > 0 ? array[index - 1] : null;
+                                                    const showDateSeparator = !prevMsg || formatMessageDate(msg.createdAt) !== formatMessageDate(prevMsg.createdAt);
+                                                    
                                                     return (
-                                                        <div key={msg._id || msg.createdAt} id={`message-${msg._id || msg.createdAt}`} data-message-date={formatMessageDate(msg.createdAt)} style={{ 
+                                                        <div key={msg._id || msg.createdAt} style={{ display: 'contents' }}>
+                                                            {showDateSeparator && (
+                                                                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', margin: '24px 0 8px 0' }}>
+                                                                    <div style={{
+                                                                        backgroundColor: 'rgba(30, 41, 59, 0.85)',
+                                                                        backdropFilter: 'blur(8px)',
+                                                                        padding: '4px 12px',
+                                                                        borderRadius: '16px',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        color: '#fff',
+                                                                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                                                                    }}>
+                                                                        {formatMessageDate(msg.createdAt)}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <div id={`message-${msg._id || msg.createdAt}`} data-message-date={formatMessageDate(msg.createdAt)} style={{ 
                                                             display: 'flex', 
                                                             flexDirection: isOwnMessage ? 'row-reverse' : 'row', 
                                                             alignItems: 'center', 
@@ -3480,6 +3503,7 @@ export default function Dashboard() {
                                                                 )}
                                                             </ChatBubble>
                                                             </ChatBubbleWrapper>
+                                                        </div>
                                                         </div>
                                                     )
                                                 })}
@@ -4578,7 +4602,7 @@ export default function Dashboard() {
                     {contextMenu.conversation && (
                         <>
                             <ContextMenuItem onClick={(e) => { setContextMenu({ ...contextMenu, visible: false }); deleteConversation(e, contextMenu.conversation._id); }} style={{ color: '#ef4444' }}>
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
+                                <Trash2 size={16} />
                                 Delete {contextMenu.conversation.type === 'group' ? 'Community' : 'Chat'}
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => setContextMenu({ ...contextMenu, visible: false })}>
@@ -4617,7 +4641,7 @@ export default function Dashboard() {
                             </ContextMenuItem>
                             {contextMenu.message.sender._id === mongoUserId && (
                                 <ContextMenuItem onClick={() => deleteMessage(contextMenu.message._id)} style={{ color: '#ef4444' }}>
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
+                                    <Trash2 size={16} />
                                     Delete Message
                                 </ContextMenuItem>
                             )}
@@ -4626,15 +4650,15 @@ export default function Dashboard() {
                     {contextMenu.callLog && (
                         <>
                             <ContextMenuItem onClick={() => openConversationWith(contextMenu.callLog.contactId)}>
-                                <MessageSquare size={14} />
+                                <MessageSquare size={16} />
                                 Message
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => openConversationWith(contextMenu.callLog.contactId, 'audio')}>
-                                <Phone size={14} />
+                                <Phone size={16} />
                                 Voice Call
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => openConversationWith(contextMenu.callLog.contactId, 'video')}>
-                                <Video size={14} />
+                                <Video size={16} />
                                 Video Call
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => deleteCallLog(contextMenu.callLog.id)} style={{ color: '#ef4444' }}>

@@ -294,7 +294,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
             {/* Footer (Viewers count if own) */}
             {isOwnStatus && !showViewers && (
-                <div style={{ position: 'absolute', bottom: '24px', width: '100%', display: 'flex', justifyContent: 'center', zIndex: 10 }}>
+                <div style={{ position: 'absolute', bottom: '120px', width: '100%', display: 'flex', justifyContent: 'center', zIndex: 10 }}>
                     <div 
                         style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }} 
                         onClick={(e) => { 

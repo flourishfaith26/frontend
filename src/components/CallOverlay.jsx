@@ -276,7 +276,7 @@ const CallOverlay = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [socket, stream]);
 
-    const createPeerConnection = (userIdToCommunicateWith) => {
+    const createPeerConnection = (userIdToCommunicateWith, localStream = stream) => {
         const peerConnection = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
