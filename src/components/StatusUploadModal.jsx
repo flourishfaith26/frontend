@@ -162,9 +162,9 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
                         )}
                         {mediaPreview && (
                             mediaFile?.type?.startsWith('video/') ? (
-                                <video src={mediaPreview} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                <video src={mediaPreview} controls style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                             ) : (
-                                <img src={mediaPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                <img src={mediaPreview} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                             )
                         )}
                     </>
@@ -173,7 +173,7 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
                 <input 
                     type="file" 
                     ref={fileInputRef} 
-                    style={{ display: 'none' }} 
+                    style={{ opacity: 0, position: 'absolute', zIndex: -1 }} 
                     accept="image/*,video/*"
                     onChange={handleFileSelect}
                 />
@@ -181,7 +181,7 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
 
             {/* Footer / Send Button */}
             <div style={{ 
-                padding: '24px', display: 'flex', 
+                padding: '24px 24px 80px 24px', display: 'flex', 
                 justifyContent: 'center', 
                 alignItems: 'center', 
                 backgroundColor: mode === 'media' && mediaPreview ? 'transparent' : 'transparent',

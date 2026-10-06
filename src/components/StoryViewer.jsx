@@ -203,10 +203,10 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                     </div>
                 )}
                 {currentStatus.type === 'image' && (
-                    <img src={currentStatus.content} alt="status" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <img src={currentStatus.content} alt="status" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                 )}
                 {currentStatus.type === 'video' && (
-                    <video src={currentStatus.content} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <video src={currentStatus.content} autoPlay muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                 )}
                 
             </div>
