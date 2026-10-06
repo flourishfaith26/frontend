@@ -16,13 +16,22 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
     const [mediaCaption, setMediaCaption] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     
+    const [videoDuration, setVideoDuration] = useState(0);
+    const [trimStart, setTrimStart] = useState(0);
+    const [trimEnd, setTrimEnd] = useState(30);
+
     const fileInputRef = useRef(null);
+    const videoRef = useRef(null);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         setMediaFile(file);
         
+        setTrimStart(0);
+        setTrimEnd(30);
+        setVideoDuration(0);
+
         const reader = new FileReader();
         reader.onloadend = () => {
             setMediaPreview(reader.result);
@@ -59,10 +68,15 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
                 const uploadData = await uploadRes.json();
                 
                 const isVideo = mediaFile.type.startsWith('video/');
+                let finalUrl = uploadData.fileUrl;
+                
+                if (isVideo) {
+                    finalUrl = finalUrl.replace('/upload/', `/upload/so_${trimStart.toFixed(1)},eo_${trimEnd.toFixed(1)}/`);
+                }
                 
                 await onUpload({
                     type: isVideo ? 'video' : 'image',
-                    content: uploadData.fileUrl,
+                    content: finalUrl,
                     caption: mediaCaption
                 });
             }
@@ -162,7 +176,75 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
                         )}
                         {mediaPreview && (
                             mediaFile?.type?.startsWith('video/') ? (
-                                <video src={mediaPreview} controls style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', height: '100%', padding: '20px', paddingBottom: '120px', boxSizing: 'border-box', justifyContent: 'center' }}>
+                                    <video 
+                                        src={mediaPreview} 
+                                        ref={videoRef}
+                                        controls 
+                                        style={{ maxWidth: '100%', flex: 1, minHeight: 0, width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: '8px' }}
+                                        onLoadedMetadata={(e) => {
+                                            const duration = e.target.duration;
+                                            setVideoDuration(duration);
+                                            setTrimEnd(Math.min(30, duration));
+                                        }}
+                                        onTimeUpdate={(e) => {
+                                            if (e.target.currentTime < trimStart || e.target.currentTime > trimEnd) {
+                                                e.target.currentTime = trimStart;
+                                                e.target.pause();
+                                            }
+                                        }}
+                                    />
+                                    <div style={{ width: '90%', maxWidth: '500px', marginTop: '16px', padding: '16px', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', zIndex: 10 }}>
+                                        <div style={{ color: 'white', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', fontWeight: '500' }}>
+                                            <span>Trim Video (Max 30s)</span>
+                                            <span>Duration: {(trimEnd - trimStart).toFixed(1)}s</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <span style={{ color: '#aaa', fontSize: '0.8rem', width: '35px', textAlign: 'right' }}>{trimStart.toFixed(1)}s</span>
+                                            <div style={{ flex: 1, position: 'relative', height: '24px', display: 'flex', alignItems: 'center' }}>
+                                                {/* Track background */}
+                                                <div style={{ position: 'absolute', width: '100%', height: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', zIndex: 1 }} />
+                                                {/* Active Range */}
+                                                <div style={{ 
+                                                    position: 'absolute', height: '6px', background: 'var(--colors-accent, #00C853)', borderRadius: '3px', zIndex: 2,
+                                                    left: `${(trimStart / videoDuration) * 100}%`,
+                                                    width: `${((trimEnd - trimStart) / videoDuration) * 100}%`
+                                                }} />
+                                                {/* Start Thumb Input */}
+                                                <input 
+                                                    type="range" 
+                                                    className="dual-thumb"
+                                                    min="0" max={videoDuration} step="0.1"
+                                                    value={trimStart} 
+                                                    onChange={(e) => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (val > trimEnd - 1) val = trimEnd - 1; 
+                                                        if (trimEnd - val > 30) val = trimEnd - 30; 
+                                                        setTrimStart(val);
+                                                        if (videoRef.current) videoRef.current.currentTime = val;
+                                                    }}
+                                                    style={{ position: 'absolute', width: '100%', zIndex: 3, margin: 0, padding: 0 }}
+                                                />
+                                                {/* End Thumb Input */}
+                                                <input 
+                                                    type="range" 
+                                                    className="dual-thumb"
+                                                    min="0" max={videoDuration} step="0.1"
+                                                    value={trimEnd} 
+                                                    onChange={(e) => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (val < trimStart + 1) val = trimStart + 1;
+                                                        if (val - trimStart > 30) val = trimStart + 30;
+                                                        setTrimEnd(val);
+                                                        if (videoRef.current) videoRef.current.currentTime = val - 1;
+                                                    }}
+                                                    style={{ position: 'absolute', width: '100%', zIndex: 4, margin: 0, padding: 0 }}
+                                                />
+                                            </div>
+                                            <span style={{ color: '#aaa', fontSize: '0.8rem', width: '35px' }}>{trimEnd.toFixed(1)}s</span>
+                                        </div>
+                                    </div>
+                                </div>
                             ) : (
                                 <img src={mediaPreview} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                             )
@@ -181,13 +263,13 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
 
             {/* Footer / Send Button */}
             <div style={{ 
-                padding: '24px 24px 80px 24px', display: 'flex', 
+                padding: '24px', display: 'flex', 
                 justifyContent: 'center', 
                 alignItems: 'center', 
                 backgroundColor: mode === 'media' && mediaPreview ? 'transparent' : 'transparent',
                 background: mode === 'media' && mediaPreview ? 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)' : 'none',
                 position: mode === 'media' && mediaPreview ? 'absolute' : 'relative',
-                bottom: 0, left: 0, width: '100%', boxSizing: 'border-box',
+                bottom: mode === 'media' && mediaPreview ? '0' : 'auto', left: 0, width: '100%', boxSizing: 'border-box',
                 zIndex: 10
             }}>
                 <div style={{ 
@@ -243,6 +325,38 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
             </div>
             
             <style>{`
+                .dual-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    background: transparent;
+                    pointer-events: none;
+                }
+                .dual-thumb::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    pointer-events: auto;
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 50%;
+                    background: #fff;
+                    cursor: pointer;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    border: 3px solid var(--colors-accent, #00C853);
+                    position: relative;
+                    z-index: 5;
+                }
+                .dual-thumb::-moz-range-thumb {
+                    pointer-events: auto;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: #fff;
+                    cursor: pointer;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    border: 3px solid var(--colors-accent, #00C853);
+                    position: relative;
+                    z-index: 5;
+                }
                 .spin { animation: spin 1s linear infinite; }
                 @keyframes spin { 100% { transform: rotate(360deg); } }
             `}</style>

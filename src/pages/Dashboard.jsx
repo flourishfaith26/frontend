@@ -9,7 +9,7 @@ import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
 import Whiteboard from '../components/Whiteboard';
 import CallOverlay from '../components/CallOverlay';
-import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight } from 'lucide-react';
+import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 import StoryViewer from '../components/StoryViewer';
 import { motion } from 'framer-motion';
@@ -1112,6 +1112,25 @@ const ResourceLink = styled('a', {
 
 hljs.configure({ languages: ['javascript', 'typescript', 'python', 'xml', 'css', 'json', 'java', 'cpp'] });
 
+// Helper for readable message timestamps
+const formatMessageTime = (dateString, isMessageList = false) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (date.toDateString() === yesterday.toDateString()) {
+        return isMessageList ? `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Yesterday';
+    } else {
+        return isMessageList 
+            ? `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+    }
+};
+
 // --- Main Dashboard Component ---
 export default function Dashboard() {
     const { user, logout, getAccessTokenSilently } = useAuth0();
@@ -1166,7 +1185,7 @@ export default function Dashboard() {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            setStatuses(prev => prev.map(s => s._id === statusId ? { ...s, viewers: [...s.viewers, mongoUserId] } : s));
+            setStatuses(prev => prev.map(s => s._id === statusId ? { ...s, viewers: [...(s.viewers || []), mongoUserId] } : s));
         } catch (error) {
             console.error("Error marking status viewed:", error);
         }
@@ -1242,6 +1261,34 @@ export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('chats'); // 'chats', 'status', 'settings'
     const [activeSettingTab, setActiveSettingTab] = useState(null);
     const [activeStatus, setActiveStatus] = useState(null);
+    
+    // Handle mobile back button
+    useEffect(() => {
+        const handlePopState = (e) => {
+            if (window.innerWidth <= 768) {
+                if (isDrawerOpen) {
+                    setIsDrawerOpen(false);
+                } else if (isStatusModalOpen) {
+                    setIsStatusModalOpen(false);
+                } else if (storyViewerInitialUserIndex !== null) {
+                    setStoryViewerInitialUserIndex(null);
+                } else if (activeConversationId !== null) {
+                    setActiveConversationId(null);
+                }
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [isDrawerOpen, isStatusModalOpen, storyViewerInitialUserIndex, activeConversationId]);
+
+    // Push state for mobile when opening views
+    useEffect(() => {
+        if (window.innerWidth <= 768) {
+            if (activeConversationId !== null || storyViewerInitialUserIndex !== null || isStatusModalOpen) {
+                window.history.pushState({ opened: true }, '');
+            }
+        }
+    }, [activeConversationId, storyViewerInitialUserIndex, isStatusModalOpen]);
 
     // Call and Search State
     const [callConfig, setCallConfig] = useState({ active: false, isReceiving: false, callerData: null, callType: 'video' });
@@ -1411,7 +1458,9 @@ export default function Dashboard() {
 
                 if (initialConversations.length > 0) {
                     setConversations(initialConversations);
-                    setActiveConversationId(initialConversations[0]._id);
+                    if (window.innerWidth > 768) {
+                        setActiveConversationId(initialConversations[0]._id);
+                    }
                 }
 
                 // Handle Shared Profile Links (?chatWith=USER_ID)
@@ -1465,6 +1514,14 @@ export default function Dashboard() {
                 });
 
                 newSocket.on('receive_message', (incomingMessage) => {
+                    if (incomingMessage.sender._id !== mongoUser._id) {
+                        newSocket.emit('mark_messages_delivered', { 
+                            conversationId: incomingMessage.conversationId, 
+                            userId: mongoUser._id, 
+                            messageIds: [incomingMessage._id] 
+                        });
+                    }
+
                     setMessages((prev) => {
                         if (prev.some(msg => msg._id === incomingMessage._id)) return prev;
                         return [...prev, incomingMessage];
@@ -1488,6 +1545,19 @@ export default function Dashboard() {
 
                 newSocket.on('message_edited', (updatedMsg) => {
                     setMessages(prev => prev.map(msg => msg._id === updatedMsg._id ? updatedMsg : msg));
+                });
+
+                newSocket.on('messages_status_updated', ({ messageIds, status, userId }) => {
+                    setMessages(prev => prev.map(msg => {
+                        if (messageIds.includes(msg._id)) {
+                            if (status === 'delivered') {
+                                return { ...msg, deliveredTo: [...(msg.deliveredTo || []), userId] };
+                            } else if (status === 'read') {
+                                return { ...msg, readBy: [...(msg.readBy || []), userId] };
+                            }
+                        }
+                        return msg;
+                    }));
                 });
 
                 newSocket.on('message_deleted', (deletedMsgId) => {
@@ -1552,6 +1622,34 @@ export default function Dashboard() {
             fetchMessageHistory();
         }
     }, [socket, activeConversationId, getAccessTokenSilently]);
+
+    // Mark messages as read when viewing a chat
+    useEffect(() => {
+        if (!socket || !activeConversationId || !mongoUserId || !appSettings.readReceipts) return;
+        
+        // Find messages in the active chat that are NOT from us, and NOT yet read by us
+        const unreadMessages = messages.filter(m => 
+            m.conversationId === activeConversationId && 
+            m.sender._id !== mongoUserId && 
+            !(m.readBy && m.readBy.includes(mongoUserId))
+        );
+
+        if (unreadMessages.length > 0) {
+            const messageIds = unreadMessages.map(m => m._id);
+            socket.emit('mark_messages_read', {
+                conversationId: activeConversationId,
+                userId: mongoUserId,
+                messageIds
+            });
+            // Optimistic local update
+            setMessages(prev => prev.map(msg => {
+                if (messageIds.includes(msg._id)) {
+                    return { ...msg, readBy: [...(msg.readBy || []), mongoUserId] };
+                }
+                return msg;
+            }));
+        }
+    }, [messages, activeConversationId, socket, mongoUserId, appSettings.readReceipts]);
 
     // 3. Handle Modal and Creating Conversations
     const openCreateModal = async () => {
@@ -2072,7 +2170,9 @@ export default function Dashboard() {
         }
         if (tab === 'chats') {
             if (!activeConversationId && conversations.length > 0) {
-                setActiveConversationId(conversations[0]._id);
+                if (window.innerWidth > 768) {
+                    setActiveConversationId(conversations[0]._id);
+                }
             }
         }
         if (tab === 'settings') {
@@ -2287,6 +2387,9 @@ export default function Dashboard() {
                                 const isOtherUserOnline = otherParticipant && activeUsers.includes(otherParticipant._id);
                                 const userStatusIndex = otherParticipant ? groupedStatuses.findIndex(g => g.user._id === otherParticipant._id) : -1;
                                 const hasStatus = userStatusIndex !== -1;
+                                const groupStatuses = hasStatus ? groupedStatuses[userStatusIndex].statuses : [];
+                                const allViewed = hasStatus ? groupStatuses.every(s => s.viewers && s.viewers.some(v => (v === mongoUserId || v._id === mongoUserId))) : true;
+                                const showStatusRing = hasStatus && !allViewed;
 
                                 return (
                                     <ChannelItem
@@ -2304,9 +2407,9 @@ export default function Dashboard() {
                                         }}
                                     >
                                         <AvatarWrapper 
-                                            style={{ flexShrink: 0, padding: hasStatus ? '2px' : '0', border: hasStatus ? '2px solid var(--colors-accent)' : 'none', cursor: hasStatus ? 'pointer' : 'default' }}
+                                            style={{ flexShrink: 0, padding: showStatusRing ? '2px' : '0', border: showStatusRing ? '2px solid var(--colors-accent)' : 'none', cursor: showStatusRing ? 'pointer' : 'default', width: showStatusRing ? '56px' : '48px', height: showStatusRing ? '56px' : '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}
                                             onClick={(e) => {
-                                                if (hasStatus) {
+                                                if (showStatusRing) {
                                                     e.stopPropagation();
                                                     setStoryViewerInitialUserIndex(userStatusIndex);
                                                 }
@@ -2316,7 +2419,7 @@ export default function Dashboard() {
                                                 src={isGroup
                                                     ? (conv.avatarUrl || `https://ui-avatars.com/api/?name=${conv.name}&background=06B6D4&color=fff`)
                                                     : (otherParticipant?.avatarUrl || `https://ui-avatars.com/api/?name=${otherParticipant?.displayName || 'User'}&background=06B6D4&color=fff`)}
-                                                style={{ width: '48px', height: '48px', border: 'none' }}
+                                                style={{ width: '48px', height: '48px', border: 'none', flexShrink: 0 }}
                                             />
                                             {!isGroup && isOtherUserOnline && <OnlineDot style={{ width: '12px', height: '12px', bottom: '2px', right: '2px' }} />}
                                         </AvatarWrapper>
@@ -2328,7 +2431,7 @@ export default function Dashboard() {
                                                 </span>
                                                 {conv.lastMessage && (
                                                     <span style={{ fontSize: '0.75rem', color: conv.unreadCount > 0 ? 'var(--colors-accent)' : 'var(--colors-textMuted)', flexShrink: 0, fontWeight: conv.unreadCount > 0 ? '600' : 'normal' }}>
-                                                        {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        {formatMessageTime(conv.lastMessage.createdAt, false)}
                                                     </span>
                                                 )}
                                             </div>
@@ -2407,7 +2510,7 @@ export default function Dashboard() {
                                             </span>
                                             {conv.lastMessage && (
                                                 <span style={{ fontSize: '0.75rem', color: conv.unreadCount > 0 ? 'var(--colors-accent)' : 'var(--colors-textMuted)', flexShrink: 0, fontWeight: conv.unreadCount > 0 ? '600' : 'normal' }}>
-                                                    {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {formatMessageTime(conv.lastMessage.createdAt, false)}
                                                 </span>
                                             )}
                                         </div>
@@ -2568,26 +2671,26 @@ export default function Dashboard() {
                                 setIsStatusModalOpen(true);
                             }
                         }} style={{ height: 'auto', padding: '12px 8px', gap: '16px' }}>
-                            <AvatarWrapper style={{ flexShrink: 0 }}>
+                            <AvatarWrapper style={{ flexShrink: 0, width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', border: myGroupedStatuses && myGroupedStatuses.statuses.length > 0 ? `2px solid ${myGroupedStatuses.statuses.every(s => s.viewers && s.viewers.some(v => (v === mongoUserId || v._id === mongoUserId))) ? 'rgba(128, 128, 128, 0.4)' : 'var(--colors-accent)'}` : 'none', padding: myGroupedStatuses && myGroupedStatuses.statuses.length > 0 ? '2px' : '0' }}>
                                 {myGroupedStatuses && myGroupedStatuses.statuses.length > 0 ? (
                                     (() => {
                                         const last = myGroupedStatuses.statuses[myGroupedStatuses.statuses.length - 1];
                                         if (last.type === 'text') {
-                                            return <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', overflow: 'hidden', textAlign: 'center', padding: '4px', border: '2px solid var(--colors-accent)' }}>
+                                            return <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', overflow: 'hidden', textAlign: 'center', padding: '4px', boxSizing: 'border-box', flexShrink: 0 }}>
                                                 <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
                                             </div>
                                         } else if (last.type === 'video') {
-                                            return <video src={last.content} style={{ width: '48px', height: '48px', border: '2px solid var(--colors-accent)', padding: '2px', objectFit: 'cover', borderRadius: '50%' }} />
+                                            return <video src={last.content} style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                                         } else {
-                                            return <Avatar src={last.content} style={{ width: '48px', height: '48px', border: '2px solid var(--colors-accent)', padding: '2px', objectFit: 'cover' }} />
+                                            return <Avatar src={last.content} style={{ width: '48px', height: '48px', objectFit: 'cover', flexShrink: 0 }} />
                                         }
                                     })()
                                 ) : (
-                                    <Avatar src={currentUserData?.avatarUrl || user?.picture} style={{ width: '48px', height: '48px' }} />
+                                    <Avatar src={currentUserData?.avatarUrl || user?.picture} style={{ width: '48px', height: '48px', flexShrink: 0 }} />
                                 )}
                                 <div
                                     onClick={(e) => { e.stopPropagation(); setIsStatusModalOpen(true); }}
-                                    style={{ position: 'absolute', bottom: -2, right: -2, backgroundColor: 'var(--colors-accent)', borderRadius: '50%', padding: '2px', color: 'white', display: 'flex' }}
+                                    style={{ position: 'absolute', bottom: -2, right: -2, backgroundColor: 'var(--colors-accent)', borderRadius: '50%', padding: '2px', color: 'white', display: 'flex', zIndex: 2 }}
                                 >
                                     <Plus size={16} />
                                 </div>
@@ -2604,30 +2707,34 @@ export default function Dashboard() {
                                 No recent updates to show right now.
                             </div>
                         ) : (
-                            otherGroupedStatuses.map((group) => (
+                            otherGroupedStatuses.map((group) => {
+                                const allViewed = group.statuses.every(s => s.viewers && s.viewers.some(v => (v === mongoUserId || v._id === mongoUserId)));
+                                const borderColor = allViewed ? 'rgba(128, 128, 128, 0.4)' : 'var(--colors-accent)';
+                                return (
                                 <ChannelItem key={group.user._id} onClick={() => setStoryViewerInitialUserIndex(groupedStatuses.findIndex(g => g.user._id === group.user._id))} style={{ height: 'auto', padding: '12px 8px', gap: '16px' }}>
-                                    <AvatarWrapper style={{ flexShrink: 0, border: '2px solid var(--colors-accent)', padding: '2px' }}>
+                                    <AvatarWrapper style={{ flexShrink: 0, border: `2px solid ${borderColor}`, padding: '2px', width: '52px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
                                         {(() => {
                                             const last = group.statuses[group.statuses.length - 1];
                                             if (last.type === 'text') {
-                                                return <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', overflow: 'hidden', textAlign: 'center', padding: '4px' }}>
+                                                return <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: last.backgroundColor || '#1E2B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', overflow: 'hidden', textAlign: 'center', padding: '4px', boxSizing: 'border-box', flexShrink: 0 }}>
                                                     <span style={{ transform: 'scale(0.8)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{last.content}</span>
                                                 </div>
                                             } else if (last.type === 'video') {
-                                                return <video src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '50%' }} />
+                                                return <video src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '50%', flexShrink: 0 }} />
                                             } else {
-                                                return <Avatar src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover' }} />
+                                                return <Avatar src={last.content} style={{ width: '44px', height: '44px', objectFit: 'cover', flexShrink: 0 }} />
                                             }
                                         })()}
                                     </AvatarWrapper>
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontSize: '1rem', color: 'var(--colors-textMain)' }}>{group.user.displayName}</span>
                                         <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)' }}>
-                                            {new Date(group.statuses[group.statuses.length - 1].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {formatMessageTime(group.statuses[group.statuses.length - 1].createdAt, true)}
                                         </span>
                                     </div>
                                 </ChannelItem>
-                            ))
+                                );
+                            })
                         )}
                     </>
                 )}
@@ -2722,7 +2829,7 @@ export default function Dashboard() {
                                             style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', flex: 1, minWidth: 0 }}
                                             title={activeConversation.type === 'group' ? 'View Group Info' : 'View Contact Info'}
                                         >
-                                            <AvatarWrapper>
+                                            <AvatarWrapper style={{ flexShrink: 0 }}>
                                                 <Avatar
                                                     src={activeConversation.type === 'group'
                                                         ? (activeConversation.avatarUrl || `https://ui-avatars.com/api/?name=${activeConversation.name}&background=06B6D4&color=fff`)
@@ -2783,10 +2890,11 @@ export default function Dashboard() {
                                     <IconButton onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' })} title="Voice Call">
                                         <Phone size={20} />
                                     </IconButton>
-                                    <IconButton onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
+                                    <IconButton desktopOnly onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
                                         <Search size={20} />
                                     </IconButton>
                                     <IconButton
+                                        desktopOnly
                                         onClick={() => {
                                             if (activeTab === 'communities') {
                                                 setCommunityTab('live coding');
@@ -2813,6 +2921,21 @@ export default function Dashboard() {
                                                     <ContextMenuItem onClick={() => { setIsDrawerOpen(true); setIsHeaderMenuOpen(false); }}>
                                                         <Info size={18} style={{ opacity: 0.8 }} />
                                                         {activeConversation.type === 'group' ? 'Group info' : 'Contact info'}
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { setIsSearchOpen(!isSearchOpen); setIsHeaderMenuOpen(false); }}>
+                                                        <Search size={18} style={{ opacity: 0.8 }} />
+                                                        Search
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => {
+                                                        if (activeTab === 'communities') {
+                                                            setCommunityTab('live coding');
+                                                        } else {
+                                                            setIsWhiteboardOpen(true);
+                                                        }
+                                                        setIsHeaderMenuOpen(false);
+                                                    }}>
+                                                        <Brush size={18} style={{ opacity: 0.8 }} />
+                                                        Whiteboard
                                                     </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { 
                                                         setCallConfig({ active: true, isReceiving: false, callerData: activeConversation, callType: 'video' });
@@ -3115,8 +3238,28 @@ export default function Dashboard() {
                                                                 </div>
 
                                                                 <MessageTime isOwn={isOwnMessage}>
-                                                                    {msg.isEdited && <i>edited</i>}
-                                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    {msg.isEdited && <i style={{ marginRight: '4px' }}>edited</i>}
+                                                                    {formatMessageTime(msg.createdAt, true)}
+                                                                    {isOwnMessage && (
+                                                                        <span style={{ marginLeft: '4px', display: 'inline-flex', alignItems: 'center' }}>
+                                                                            {(() => {
+                                                                                if (!appSettings.readReceipts) {
+                                                                                    return <CheckCheck size={14} color="rgba(255,255,255,0.6)" />; // Always show 2 grey ticks if receipts are disabled
+                                                                                }
+                                                                                
+                                                                                const readCount = msg.readBy ? msg.readBy.length : 0;
+                                                                                const deliveredCount = msg.deliveredTo ? msg.deliveredTo.length : 0;
+                                                                                
+                                                                                if (readCount > 0) {
+                                                                                    return <CheckCheck size={14} color="#3b82f6" />; // Blue ticks
+                                                                                } else if (deliveredCount > 0) {
+                                                                                    return <CheckCheck size={14} color="rgba(255,255,255,0.6)" />; // Two grey ticks
+                                                                                } else {
+                                                                                    return <Check size={14} color="rgba(255,255,255,0.6)" />; // One grey tick
+                                                                                }
+                                                                            })()}
+                                                                        </span>
+                                                                    )}
                                                                 </MessageTime>
 
                                                                 {editingMessageId === msg._id && (
@@ -4172,6 +4315,7 @@ export default function Dashboard() {
                     onDelete={handleDeleteStatus}
                     onForward={handleForwardStatus}
                     onReshare={handleReshareStatus}
+                    readReceipts={appSettings.readReceipts}
                 />
             )}
 

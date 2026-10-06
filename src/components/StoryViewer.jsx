@@ -1,13 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Eye, ChevronLeft, ChevronRight, MoreVertical, Forward, RefreshCw, Trash2 } from 'lucide-react';
+import { X, Eye, EyeOff, ChevronLeft, ChevronRight, MoreVertical, Forward, RefreshCw, Trash2 } from 'lucide-react';
 
-const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUserId, markViewed, onDelete, onForward, onReshare }) => {
+const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUserId, markViewed, onDelete, onForward, onReshare, readReceipts = true }) => {
     const [userIndex, setUserIndex] = useState(initialUserIndex);
-    const [statusIndex, setStatusIndex] = useState(0);
+    const [statusIndex, setStatusIndex] = useState(() => {
+        const group = groupedStatuses[initialUserIndex];
+        if (!group || !group.statuses) return 0;
+        const firstUnviewed = group.statuses.findIndex(s => !s.viewers || !s.viewers.some(v => v === currentUserId || v._id === currentUserId));
+        return firstUnviewed !== -1 ? firstUnviewed : 0;
+    });
     const [isPaused, setIsPaused] = useState(false);
     const [progress, setProgress] = useState(0);
     const [showMenu, setShowMenu] = useState(false);
     const [showViewers, setShowViewers] = useState(false);
+    
+    const touchStartY = useRef(0);
+    const touchCurrentY = useRef(0);
+    const containerRef = useRef(null);
+    const videoRef = useRef(null);
+
+    useEffect(() => {
+        if (videoRef.current) {
+            if (isPaused || showMenu || showViewers) {
+                videoRef.current.pause();
+            } else {
+                videoRef.current.play().catch(e => console.log('Auto-play prevented:', e));
+            }
+        }
+    }, [isPaused, showMenu, showViewers, statusIndex]);
     
     const currentUserGroup = groupedStatuses[userIndex];
     const currentStatuses = currentUserGroup?.statuses || [];
@@ -43,18 +63,15 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
     // Mark as viewed when status changes
     useEffect(() => {
-        if (currentStatus && !isOwnStatus && !currentStatus.viewers.includes(currentUserId)) {
+        if (currentStatus && readReceipts && !currentStatus.viewers.some(v => v === currentUserId || v._id === currentUserId)) {
             markViewed(currentStatus._id);
         }
-    }, [currentStatus, isOwnStatus, currentUserId, markViewed]);
+    }, [currentStatus, isOwnStatus, currentUserId, markViewed, readReceipts]);
 
     // Handle timer
     useEffect(() => {
         if (isPaused || showMenu || showViewers || !currentStatus) return;
-
-        // If it's a video, let the video element control the progress instead of the timer?
-        // For simplicity, we'll use fixed timer for text/image, and maybe let video play through.
-        // Actually, we'll just stick to 5s for everything unless it's a video, but let's just do 5s for now to keep it simple.
+        if (currentStatus.type === 'video') return; // Let video control its own progress
 
         const timer = setInterval(() => {
             setProgress(prev => {
@@ -75,8 +92,15 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
         if (statusIndex < currentStatuses.length - 1) {
             setStatusIndex(prev => prev + 1);
         } else if (userIndex < groupedStatuses.length - 1) {
-            setUserIndex(prev => prev + 1);
-            setStatusIndex(0);
+            const nextUserIndex = userIndex + 1;
+            setUserIndex(nextUserIndex);
+            const nextGroup = groupedStatuses[nextUserIndex];
+            if (nextGroup && nextGroup.statuses) {
+                const firstUnviewed = nextGroup.statuses.findIndex(s => !s.viewers || !s.viewers.some(v => v === currentUserId || v._id === currentUserId));
+                setStatusIndex(firstUnviewed !== -1 ? firstUnviewed : 0);
+            } else {
+                setStatusIndex(0);
+            }
         } else {
             onClose(); // Reached the end
         }
@@ -94,13 +118,46 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
         }
     };
 
+    const handleTouchStart = (e) => {
+        touchStartY.current = e.touches[0].clientY;
+        touchCurrentY.current = e.touches[0].clientY;
+    };
+
+    const handleTouchMove = (e) => {
+        touchCurrentY.current = e.touches[0].clientY;
+        const deltaY = touchCurrentY.current - touchStartY.current;
+        if (deltaY > 0 && containerRef.current) {
+            containerRef.current.style.transform = `translateY(${deltaY}px)`;
+            containerRef.current.style.transition = 'none';
+        }
+    };
+
+    const handleTouchEnd = (e) => {
+        const deltaY = touchCurrentY.current - touchStartY.current;
+        if (deltaY > 120) {
+            onClose();
+        } else if (containerRef.current) {
+            containerRef.current.style.transform = 'translateY(0)';
+            containerRef.current.style.transition = 'transform 0.2s ease-out';
+        }
+    };
+
     if (!currentStatus) return null;
 
+    const actualViewers = currentStatus.viewers.filter(v => v !== currentUserId && v._id !== currentUserId);
+
     return (
-        <div style={{
+        <>
+        <div 
+            ref={containerRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            style={{
             position: 'fixed', top: 0, left: 0, width: '100%', height: '100vh', minHeight: '100dvh',
             backgroundColor: '#000', zIndex: 9999, display: 'flex', flexDirection: 'column',
-            fontFamily: 'system-ui, -apple-system, sans-serif'
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            transition: 'transform 0.2s ease-out'
         }}>
             {/* Progress Bars */}
             <div style={{ display: 'flex', gap: '4px', padding: '16px 8px 8px 8px', position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
@@ -110,7 +167,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                             height: '100%',
                             backgroundColor: '#fff',
                             width: i === statusIndex ? `${progress}%` : i < statusIndex ? '100%' : '0%',
-                            transition: i === statusIndex ? 'width 50ms linear' : 'none'
+                            transition: i === statusIndex ? (s.type === 'video' ? 'width 250ms linear' : 'width 50ms linear') : 'none'
                         }} />
                     </div>
                 ))}
@@ -179,24 +236,34 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
 
             {/* Click/Hold Areas */}
             <div 
-                style={{ position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', zIndex: 5 }}
+                className="story-nav-area left-nav"
+                style={{ position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', zIndex: 5, display: 'flex', alignItems: 'center', paddingLeft: '24px', cursor: 'pointer' }}
                 onClick={handlePrev}
                 onMouseDown={() => setIsPaused(true)}
                 onMouseUp={() => setIsPaused(false)}
                 onTouchStart={() => setIsPaused(true)}
                 onTouchEnd={() => setIsPaused(false)}
-            />
+            >
+                <div className="nav-btn" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff', backdropFilter: 'blur(4px)', transition: 'all 0.2s' }}>
+                    <ChevronLeft size={32} />
+                </div>
+            </div>
             <div 
-                style={{ position: 'absolute', top: 0, right: 0, width: '70%', height: '100%', zIndex: 5 }}
+                className="story-nav-area right-nav"
+                style={{ position: 'absolute', top: 0, right: 0, width: '70%', height: '100%', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '24px', cursor: 'pointer' }}
                 onClick={handleNext}
                 onMouseDown={() => setIsPaused(true)}
                 onMouseUp={() => setIsPaused(false)}
                 onTouchStart={() => setIsPaused(true)}
                 onTouchEnd={() => setIsPaused(false)}
-            />
+            >
+                <div className="nav-btn" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff', backdropFilter: 'blur(4px)', transition: 'all 0.2s' }}>
+                    <ChevronRight size={32} />
+                </div>
+            </div>
 
             {/* Content Content */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: currentStatus.type === 'text' ? currentStatus.backgroundColor : '#000', position: 'relative' }}>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: currentStatus.type === 'text' ? currentStatus.backgroundColor : 'transparent', position: 'relative', minHeight: 0, overflow: 'hidden', zIndex: 1 }}>
                 {currentStatus.type === 'text' && (
                     <div style={{ color: '#fff', fontSize: '2rem', textAlign: 'center', padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '80%' }}>
                         {currentStatus.content}
@@ -206,7 +273,22 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                     <img src={currentStatus.content} alt="status" style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
                 )}
                 {currentStatus.type === 'video' && (
-                    <video src={currentStatus.content} autoPlay muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+                    <video 
+                        ref={videoRef}
+                        src={currentStatus.content} 
+                        autoPlay 
+                        muted 
+                        playsInline 
+                        onEnded={() => {
+                            if (!isPaused && !showMenu && !showViewers) handleNext();
+                        }}
+                        onTimeUpdate={(e) => {
+                            if (!isPaused && e.target.duration) {
+                                setProgress((e.target.currentTime / e.target.duration) * 100);
+                            }
+                        }}
+                        style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} 
+                    />
                 )}
                 
             </div>
@@ -216,10 +298,25 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                 <div style={{ position: 'absolute', bottom: '24px', width: '100%', display: 'flex', justifyContent: 'center', zIndex: 10 }}>
                     <div 
                         style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }} 
-                        onClick={(e) => { e.stopPropagation(); setShowViewers(true); setIsPaused(true); }}
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            if (readReceipts) {
+                                setShowViewers(true); 
+                                setIsPaused(true); 
+                            }
+                        }}
                     >
-                        <Eye size={24} />
-                        <span style={{ fontSize: '0.9rem', marginTop: '4px', fontWeight: '500' }}>{currentStatus.viewers.length}</span>
+                        {readReceipts ? (
+                            <>
+                                <Eye size={24} />
+                                <span style={{ fontSize: '0.9rem', marginTop: '4px', fontWeight: '500' }}>{actualViewers.length}</span>
+                            </>
+                        ) : (
+                            <>
+                                <EyeOff size={24} />
+                                <span style={{ fontSize: '0.7rem', marginTop: '4px', fontWeight: '500' }}>Disabled</span>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -243,19 +340,19 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                     >
                         <div style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                             <div style={{ fontWeight: '600', fontSize: '1.1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Eye size={20} /> Viewed by {currentStatus.viewers.length}
+                                <Eye size={20} /> Viewed by {actualViewers.length}
                             </div>
                             <button onClick={() => { setShowViewers(false); setIsPaused(false); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
                                 <X size={24} />
                             </button>
                         </div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                            {currentStatus.viewers.length === 0 ? (
+                            {actualViewers.length === 0 ? (
                                 <div style={{ padding: '32px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
                                     No views yet
                                 </div>
                             ) : (
-                                currentStatus.viewers.map(viewer => (
+                                actualViewers.map(viewer => (
                                     <div key={viewer._id || viewer} style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                         <img 
                                             src={viewer.avatarUrl || 'https://via.placeholder.com/40'} 
@@ -302,6 +399,23 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                 </div>
             )}
         </div>
+            <style>{`
+                .story-nav-area .nav-btn {
+                    opacity: 0;
+                    transform: scale(0.9);
+                }
+                .story-nav-area:hover .nav-btn {
+                    opacity: 1;
+                    transform: scale(1);
+                    background-color: rgba(255,255,255,0.3) !important;
+                }
+                @media (max-width: 768px) {
+                    .story-nav-area .nav-btn {
+                        display: none !important;
+                    }
+                }
+            `}</style>
+        </>
     );
 };
 
