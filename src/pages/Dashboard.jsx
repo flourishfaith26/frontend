@@ -1117,17 +1117,33 @@ const formatMessageTime = (dateString, isMessageList = false) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
     
-    if (date.toDateString() === today.toDateString()) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (date.toDateString() === yesterday.toDateString()) {
-        return isMessageList ? `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Yesterday';
+    // Normalize to start of day for accurate day differences
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    const diffTime = startOfToday.getTime() - startOfDate.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+    
+    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (diffDays === 0) {
+        return timeString; // Today
+    } else if (diffDays === 1) {
+        return isMessageList ? `Yesterday, ${timeString}` : 'Yesterday';
+    } else if (diffDays > 1 && diffDays < 7) {
+        // Within the last week
+        const dayNameLong = date.toLocaleDateString([], { weekday: 'long' });
+        const dayNameShort = date.toLocaleDateString([], { weekday: 'short' });
+        return isMessageList ? `${dayNameShort}, ${timeString}` : dayNameLong;
     } else {
-        return isMessageList 
-            ? `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            : date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+        // Older than a week
+        const formattedDate = date.toLocaleDateString([], { 
+            month: 'numeric', 
+            day: 'numeric', 
+            year: date.getFullYear() !== today.getFullYear() ? '2-digit' : undefined 
+        });
+        return isMessageList ? `${formattedDate}, ${timeString}` : formattedDate;
     }
 };
 
