@@ -168,7 +168,8 @@ const CallOverlay = ({
     mongoUserId,
     activeConversation,
     callConfig, // { active: bool, isReceiving: bool, callerData: obj, callType: 'video' | 'audio' }
-    onEndCall
+    onEndCall,
+    currentUserData
 }) => {
     const [stream, setStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
@@ -341,7 +342,7 @@ const CallOverlay = ({
             signalData: offer,
             from: mongoUserId,
             callerInfo: {
-                name: 'User', // We could pass current user name here, but let's keep it simple
+                name: currentUserData?.displayName || 'Someone',
             },
             callType: callConfig.callType
         });
@@ -449,6 +450,8 @@ const CallOverlay = ({
     const callerAvatar = activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`;
 
     const handleImageError = (e) => {
+        // Prevent infinite loop if ui-avatars fails
+        e.target.onerror = null; 
         e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`;
     };
 
@@ -472,6 +475,17 @@ const CallOverlay = ({
                             </ControlButton>
                         </div>
                     )}
+                </CallerInfo>
+            ) : callConfig.callType === 'audio' ? (
+                <CallerInfo>
+                    <CallingAnimation>
+                        <Avatar src={callerAvatar} alt="Caller Avatar" onError={handleImageError} style={{ border: '4px solid var(--colors-primary)' }} />
+                    </CallingAnimation>
+                    <h2>{callerName}</h2>
+                    <p style={{ color: '#10B981' }}>00:00 - Connected</p>
+                    {/* Keep the invisible video elements so WebRTC still works */}
+                    <VideoElement playsInline muted ref={myVideo} autoPlay style={{ display: 'none' }} />
+                    <VideoElement playsInline ref={remoteVideo} autoPlay style={{ display: 'none' }} />
                 </CallerInfo>
             ) : (
                 <VideoGrid>
@@ -502,6 +516,12 @@ const CallOverlay = ({
                         />
                         {!remoteStream && (
                             <div style={{ color: '#94A3B8' }}>Connecting...</div>
+                        )}
+                        {remoteStream && remoteStream.getVideoTracks().length === 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <Avatar src={callerAvatar} alt={callerName} style={{ width: 80, height: 80, border: 'none' }} onError={handleImageError} />
+                                <span>{callerName}</span>
+                            </div>
                         )}
                     </VideoWrapper>
                 </VideoGrid>

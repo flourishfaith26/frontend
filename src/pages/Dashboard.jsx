@@ -4564,6 +4564,7 @@ export default function Dashboard() {
                 mongoUserId={mongoUserId}
                 activeConversation={activeConversation}
                 callConfig={callConfig}
+                currentUserData={currentUserData}
                 onEndCall={() => setCallConfig({ active: false, isReceiving: false, callerData: null, callType: 'video' })}
             />
 
