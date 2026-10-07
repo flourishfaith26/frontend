@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, useRef } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, useRef } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { io } from 'socket.io-client';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -25,13 +25,16 @@ import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
 const Whiteboard = lazy(() => import('../components/Whiteboard'));
 const CallOverlay = lazy(() => import('../components/CallOverlay'));
-import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck } from 'lucide-react';
+import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck, FileText, Maximize2 } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 const StoryViewer = lazy(() => import('../components/StoryViewer'));
 import { motion } from 'framer-motion';
 const StatusUploadModal = lazy(() => import('../components/StatusUploadModal'));
 const EventsView = lazy(() => import('../components/EventsView'));
 import { useNavigate } from 'react-router-dom';
+
+const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 [
     ['javascript', javascript],
@@ -205,26 +208,6 @@ const Button = styled('button', {
 });
 
 
-
-const PlaceholderContainer = styled('div', {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    width: '100%',
-    backgroundColor: '$bg',
-    color: '$textMuted',
-    gap: '16px'
-});
-
-const PlaceholderView = ({ icon, title, subtitle }) => (
-    <PlaceholderContainer>
-        <div style={{ color: 'rgba(255,255,255,0.2)' }}>{icon}</div>
-        <h2 style={{ color: 'var(--colors-textMain)', fontWeight: 'normal', margin: 0 }}>{title}</h2>
-        {subtitle && <p style={{ margin: 0 }}>{subtitle}</p>}
-    </PlaceholderContainer>
-);
 
 const Sidebar = styled('aside', {
     width: '300px',
@@ -634,29 +617,9 @@ const ModalTitle = styled('h3', {
     alignItems: 'center',
 });
 
-const FormGroup = styled('div', {
-    marginBottom: '$3',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-});
-
 const Label = styled('label', {
     color: '$textMuted',
     fontSize: '0.85rem',
-});
-
-const Select = styled('select', {
-    padding: '$2',
-    borderRadius: '$1',
-    backgroundColor: '$bg',
-    color: '$textMain',
-    border: '1px solid $border',
-    outline: 'none',
-    '& option': {
-        backgroundColor: '#0F172A',
-        color: 'white'
-    }
 });
 
 const ModalInput = styled('input', {
@@ -675,22 +638,6 @@ const UserList = styled('div', {
     border: '1px solid $border',
     borderRadius: '$1',
     backgroundColor: '$bg',
-});
-
-const UserListItem = styled('div', {
-    padding: '$2',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    cursor: 'pointer',
-    borderBottom: '1px solid $border',
-    '&:hover': { backgroundColor: '$surface' },
-    '&:last-child': { borderBottom: 'none' },
-    variants: {
-        selected: {
-            true: { backgroundColor: 'rgba(6, 182, 212, 0.1)' }
-        }
-    }
 });
 
 // --- Input Area Components ---
@@ -1121,10 +1068,6 @@ const RightDrawer = styled('aside', {
     }
 });
 
-const DrawerSection = styled('div', {
-    marginBottom: '$4',
-});
-
 const ContactMenuItem = styled('div', {
     display: 'flex',
     alignItems: 'center',
@@ -1152,51 +1095,6 @@ const SubPaneHeader = styled('div', {
     top: 0,
     zIndex: 10,
     borderBottom: '1px solid $border'
-});
-
-const ParticipantRow = styled('div', {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '$2 0',
-});
-
-const ParticipantInfo = styled('div', {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-});
-
-const TechBadge = styled('span', {
-    fontSize: '0.65rem',
-    padding: '2px 6px',
-    borderRadius: '4px',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    variants: {
-        discipline: {
-            Frontend: { backgroundColor: 'rgba(6, 182, 212, 0.1)', color: '#06B6D4' },
-            Backend: { backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10B981' },
-            UIUX: { backgroundColor: 'rgba(244, 63, 94, 0.1)', color: '#F43F5E' },
-            Fullstack: { backgroundColor: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }
-        }
-    },
-    defaultVariants: {
-        discipline: 'Fullstack'
-    }
-});
-
-const ResourceLink = styled('a', {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    color: '$textMuted',
-    textDecoration: 'none',
-    fontSize: '0.85rem',
-    padding: '$2 0',
-    transition: 'color 0.2s',
-    '&:hover': { color: '$accent' }
 });
 
 hljs.configure({ languages: ['javascript', 'typescript', 'python', 'xml', 'css', 'json', 'java', 'cpp'] });
@@ -1286,21 +1184,38 @@ export default function Dashboard() {
     const [chatSearchQuery, setChatSearchQuery] = useState('');
     const [activeConversationId, setActiveConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
-    const [messageDateLabel, setMessageDateLabel] = useState('');
     const [showMessageDateLabel, setShowMessageDateLabel] = useState(false);
 
     // Status State
     const [statuses, setStatuses] = useState([]);
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
     const [storyViewerInitialUserIndex, setStoryViewerInitialUserIndex] = useState(null);
+    const [statusClock, setStatusClock] = useState(Date.now);
 
-    // Group statuses by user
-    const groupedStatuses = Object.values(statuses.filter(s => (Date.now() - new Date(s.createdAt).getTime()) < 24 * 60 * 60 * 1000).reduce((acc, status) => {
-        const uploaderId = status.uploader._id;
-        if (!acc[uploaderId]) acc[uploaderId] = { user: status.uploader, statuses: [] };
-        acc[uploaderId].statuses.push(status);
-        return acc;
-    }, {}));
+    useEffect(() => {
+        const refreshStatusClock = () => setStatusClock(Date.now());
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') refreshStatusClock();
+        };
+        const intervalId = window.setInterval(refreshStatusClock, 15 * 1000);
+        window.addEventListener('focus', refreshStatusClock);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            window.clearInterval(intervalId);
+            window.removeEventListener('focus', refreshStatusClock);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
+    const groupedStatuses = useMemo(() => Object.values(statuses
+        .filter(status => status.uploader && statusClock - new Date(status.createdAt).getTime() < STATUS_LIFETIME_MS)
+        .reduce((groups, status) => {
+            const uploaderId = status.uploader._id;
+            if (!uploaderId) return groups;
+            if (!groups[uploaderId]) groups[uploaderId] = { user: status.uploader, statuses: [] };
+            groups[uploaderId].statuses.push(status);
+            return groups;
+        }, {})), [statuses, statusClock]);
     const myGroupedStatuses = groupedStatuses.find(g => g.user._id === mongoUserId);
     const otherGroupedStatuses = groupedStatuses.filter(g => g.user._id !== mongoUserId);
 
@@ -1336,18 +1251,27 @@ export default function Dashboard() {
     };
 
     const handleDeleteStatus = async (statusId) => {
-        // Optimistic update for instant UI response
-        setStatuses(prev => prev.filter(s => s._id !== statusId));
-
         try {
             const token = await getAccessTokenSilently();
-            await fetch(`${BACKEND_URL}/api/status/${statusId}`, {
+            const response = await fetch(`${BACKEND_URL}/api/status/${statusId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (!response.ok) throw new Error(`Status deletion failed (${response.status})`);
+
+            setStatuses(previous => previous.filter(status => status._id !== statusId));
+            const refreshResponse = await fetch(`${BACKEND_URL}/api/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!refreshResponse.ok) throw new Error(`Status refresh failed (${refreshResponse.status})`);
+            const refreshedStatuses = await refreshResponse.json();
+            if (!Array.isArray(refreshedStatuses)) throw new Error('Status refresh returned invalid data');
+            setStatuses(refreshedStatuses);
+            return true;
         } catch (error) {
             console.error("Error deleting status:", error);
-            // We could revert the state here on error, but for UX simplicity we leave it
+            showToast('Could not delete or refresh status');
+            return false;
         }
     };
 
@@ -1455,22 +1379,54 @@ export default function Dashboard() {
     };
 
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(() => {
-        return sessionStorage.getItem('isWhiteboardOpen') === 'true';
+        return window.innerWidth > 768 && sessionStorage.getItem('isWhiteboardOpen') === 'true';
     });
+    const [mobileWhiteboardDesign, setMobileWhiteboardDesign] = useState(null);
+    const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth <= 768);
+    const [communityTab, setCommunityTab] = useState('chat');
+    const [mediaViewer, setMediaViewer] = useState(null);
     const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
 
     useEffect(() => {
-        sessionStorage.setItem('isWhiteboardOpen', isWhiteboardOpen);
-    }, [isWhiteboardOpen]);
+        const handleResize = () => {
+            const isMobile = window.innerWidth <= 768;
+            setIsMobileViewport(isMobile);
+            if (isMobile) {
+                setIsWhiteboardOpen(false);
+                sessionStorage.removeItem('isWhiteboardOpen');
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    useEffect(() => {
+        if (isMobileViewport) {
+            sessionStorage.removeItem('isWhiteboardOpen');
+        } else {
+            sessionStorage.setItem('isWhiteboardOpen', isWhiteboardOpen);
+        }
+    }, [isWhiteboardOpen, isMobileViewport]);
+
+    useEffect(() => {
+        if (!mediaViewer) return undefined;
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') setMediaViewer(null);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [mediaViewer]);
     const [activeTab, setActiveTab] = useState('chats'); // 'chats', 'status', 'settings'
     const [activeSettingTab, setActiveSettingTab] = useState(null);
-    const [activeStatus, setActiveStatus] = useState(null);
     
     // Handle mobile back button
     useEffect(() => {
-        const handlePopState = (e) => {
+        const handlePopState = () => {
             if (window.innerWidth <= 768) {
-                if (isDrawerOpen) {
+                if (mobileWhiteboardDesign) {
+                    setMobileWhiteboardDesign(null);
+                } else if (isDrawerOpen) {
                     setIsDrawerOpen(false);
                 } else if (isStatusModalOpen) {
                     setIsStatusModalOpen(false);
@@ -1483,16 +1439,16 @@ export default function Dashboard() {
         };
         window.addEventListener('popstate', handlePopState);
         return () => window.removeEventListener('popstate', handlePopState);
-    }, [isDrawerOpen, isStatusModalOpen, storyViewerInitialUserIndex, activeConversationId]);
+    }, [isDrawerOpen, isStatusModalOpen, storyViewerInitialUserIndex, activeConversationId, mobileWhiteboardDesign]);
 
     // Push state for mobile when opening views
     useEffect(() => {
         if (window.innerWidth <= 768) {
-            if (activeConversationId !== null || storyViewerInitialUserIndex !== null || isStatusModalOpen) {
+            if (activeConversationId !== null || storyViewerInitialUserIndex !== null || isStatusModalOpen || mobileWhiteboardDesign) {
                 window.history.pushState({ opened: true }, '');
             }
         }
-    }, [activeConversationId, storyViewerInitialUserIndex, isStatusModalOpen]);
+    }, [activeConversationId, storyViewerInitialUserIndex, isStatusModalOpen, mobileWhiteboardDesign]);
 
     // Call and Search State
     const [callConfig, setCallConfig] = useState({ active: false, isReceiving: false, callerData: null, callType: 'video' });
@@ -1502,8 +1458,8 @@ export default function Dashboard() {
     const [callLogs, setCallLogs] = useState([]);
 
     const formatCallLog = (log, currentUserId) => {
-        const isCaller = log.caller._id === currentUserId;
-        const isGroup = !!log.conversation;
+        const isCaller = String(log.caller?._id || log.caller) === String(currentUserId);
+        const isGroup = log.conversation?.type === 'group';
         const contact = isGroup ? log.conversation : (isCaller ? log.receiver : log.caller);
         
         return {
@@ -1571,8 +1527,6 @@ export default function Dashboard() {
     const audioChunksRef = useRef([]);
     const [recordingTime, setRecordingTime] = useState(0);
     const recordingIntervalRef = useRef(null);
-    const [communityTab, setCommunityTab] = useState('chat');
-
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAddMembersModalOpen, setIsAddMembersModalOpen] = useState(false);
@@ -1602,11 +1556,9 @@ export default function Dashboard() {
     const messagesEndRef = useRef(null);
     const messageListRef = useRef(null);
     const messageDateHideTimerRef = useRef(null);
-    const lastScrollTopRef = useRef(0);
     const touchHoldTimer = useRef(null);
     const touchStartCoords = useRef({ x: 0, y: 0 });
     const suppressNextSelectionClick = useRef(false);
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
     const handleMessageListScroll = () => {
         const messageList = messageListRef.current;
@@ -1841,7 +1793,7 @@ export default function Dashboard() {
             isActive = false;
             if (newSocket) newSocket.disconnect();
         };
-    }, [getAccessTokenSilently, user]);
+    }, [getAccessTokenSilently, user, navigate]);
 
     // 2. Handle Room Joining and Message History Fetching
     useEffect(() => {
@@ -1883,13 +1835,6 @@ export default function Dashboard() {
                 userId: mongoUserId,
                 messageIds
             });
-            // Optimistic local update
-            setMessages(prev => prev.map(msg => {
-                if (messageIds.includes(msg._id)) {
-                    return { ...msg, readBy: [...(msg.readBy || []), mongoUserId] };
-                }
-                return msg;
-            }));
         }
     }, [messages, activeConversationId, socket, mongoUserId, appSettings.readReceipts]);
 
@@ -2271,7 +2216,9 @@ export default function Dashboard() {
             content: forwardMessageData.content,
             isCodeSnippet: forwardMessageData.isCodeSnippet || false,
             language: forwardMessageData.language || 'plaintext',
-            caption: forwardMessageData.caption || ''
+            caption: forwardMessageData.caption || '',
+            attachmentName: forwardMessageData.attachmentName || '',
+            attachmentType: forwardMessageData.attachmentType || ''
         };
 
         socket.emit('send_message', payload);
@@ -2355,11 +2302,7 @@ export default function Dashboard() {
         if (!file || !socket || !mongoUserId || !activeConversationId) return;
 
         setChatUploadFile(file);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setChatUploadPreview(reader.result);
-        };
-        reader.readAsDataURL(file);
+        setChatUploadPreview(URL.createObjectURL(file));
 
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -2387,6 +2330,8 @@ export default function Dashboard() {
                 senderId: mongoUserId,
                 content: data.fileUrl,
                 caption: chatUploadCaption,
+                attachmentName: chatUploadFile.name,
+                attachmentType: chatUploadFile.type || 'application/octet-stream',
                 isCodeSnippet: false,
                 language: 'plaintext'
             };
@@ -2398,12 +2343,14 @@ export default function Dashboard() {
         } finally {
             setIsUploading(false);
             setChatUploadFile(null);
+            if (chatUploadPreview) URL.revokeObjectURL(chatUploadPreview);
             setChatUploadPreview(null);
             setChatUploadCaption('');
         }
     };
 
     const cancelChatUpload = () => {
+        if (chatUploadPreview) URL.revokeObjectURL(chatUploadPreview);
         setChatUploadFile(null);
         setChatUploadPreview(null);
         setChatUploadCaption('');
@@ -2487,9 +2434,19 @@ export default function Dashboard() {
     const isSelectingCurrentMessages = isSelectingMessages && messageSelectionConversationId === activeConversationId;
     const showChatArea = !!activeConversationId || (activeTab === 'settings' && !!activeSettingTab);
 
-    const isImageUrl = (url) => typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null || url.startsWith('data:image/'));
-    const isAudioUrl = (url) => typeof url === 'string' && url.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) != null;
+    const isImageUrl = (url, mimeType) => mimeType
+        ? mimeType.startsWith('image/')
+        : typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null || url.startsWith('data:image/'));
+    const isAudioUrl = (url, mimeType) => mimeType
+        ? mimeType.startsWith('audio/')
+        : typeof url === 'string' && url.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) != null;
+    const isVideoUrl = (url, mimeType) => mimeType
+        ? mimeType.startsWith('video/')
+        : typeof url === 'string' && (url.match(/\.(mp4|mov|avi|mkv)(\?.*)?$/i) != null || (url.includes('/video/upload/') && !/\.webm(\?.*)?$/i.test(url)));
     const isCloudinaryUrl = (url) => typeof url === 'string' && url.includes('res.cloudinary.com');
+    const openMediaViewer = (src, type = 'image', title = '') => {
+        if (src) setMediaViewer({ src, type, title });
+    };
 
     const handleTabChange = (tab) => {
         if (activeTab === tab) return;
@@ -2577,7 +2534,8 @@ export default function Dashboard() {
                         <Avatar
                             src={currentUserData?.avatarUrl || user?.picture}
                             alt={user?.name || user?.nickname || 'User'}
-                            style={{ width: '32px', height: '32px' }}
+                            onClick={() => openMediaViewer(currentUserData?.avatarUrl || user?.picture, 'image', currentUserData?.displayName || user?.name || 'Profile picture')}
+                            style={{ width: '32px', height: '32px', cursor: 'zoom-in' }}
                             onError={(e) => {
                                 e.target.src = `https://ui-avatars.com/api/?name=${user?.name || user?.nickname || 'User'}&background=06B6D4&color=fff`;
                             }}
@@ -3226,7 +3184,7 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <ChannelItem active={activeStatus === 'My status'} onClick={() => {
+                        <ChannelItem active={false} onClick={() => {
                             if (myGroupedStatuses) {
                                 setStoryViewerInitialUserIndex(groupedStatuses.findIndex(g => g.user._id === mongoUserId));
                             } else {
@@ -3306,7 +3264,7 @@ export default function Dashboard() {
                 {activeTab === 'settings' && activeSettingTab ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, backgroundColor: 'var(--colors-bg)', overflow: 'hidden' }}>
                         {activeSettingTab === 'Profile' ? (
-                            <ProfilePane onBack={() => setActiveSettingTab(null)} currentUser={currentUserData} onUpdateProfile={handleUpdateProfile} getAccessTokenSilently={getAccessTokenSilently} BACKEND_URL={BACKEND_URL} />
+                            <ProfilePane onBack={() => setActiveSettingTab(null)} currentUser={currentUserData} onUpdateProfile={handleUpdateProfile} getAccessTokenSilently={getAccessTokenSilently} BACKEND_URL={BACKEND_URL} onViewProfilePicture={(image) => openMediaViewer(image, 'image', 'Profile picture')} />
                         ) : activeSettingTab === 'Account' ? (
                             <AccountPane onBack={() => setActiveSettingTab(null)} settings={appSettings} updateSetting={updateSetting} />
                         ) : activeSettingTab === 'Privacy' ? (
@@ -3396,7 +3354,16 @@ export default function Dashboard() {
                                                     src={activeConversation.type === 'group'
                                                         ? (activeConversation.avatarUrl || `https://ui-avatars.com/api/?name=${activeConversation.name}&background=06B6D4&color=fff`)
                                                         : (activeConversation.participants?.find(p => p._id !== mongoUserId)?.avatarUrl || `https://ui-avatars.com/api/?name=User&background=06B6D4&color=fff`)}
-                                                    style={{ width: '40px', height: '40px', flexShrink: 0 }}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        const image = activeConversation.type === 'group'
+                                                            ? activeConversation.avatarUrl
+                                                            : activeConversation.participants?.find(p => p._id !== mongoUserId)?.avatarUrl;
+                                                        openMediaViewer(image, 'image', activeConversation.type === 'group'
+                                                            ? activeConversation.name
+                                                            : activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Profile picture');
+                                                    }}
+                                                    style={{ width: '40px', height: '40px', flexShrink: 0, cursor: 'zoom-in' }}
                                                 />
                                             </AvatarWrapper>
                                             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
@@ -3488,7 +3455,7 @@ export default function Dashboard() {
                                                         <Search size={18} style={{ opacity: 0.8 }} />
                                                         Search
                                                     </ContextMenuItem>
-                                                    <ContextMenuItem onClick={() => {
+                                                    {!isMobileViewport && <ContextMenuItem onClick={() => {
                                                         if (activeTab === 'communities') {
                                                             setCommunityTab('live coding');
                                                         } else {
@@ -3498,7 +3465,7 @@ export default function Dashboard() {
                                                     }}>
                                                         <Brush size={18} style={{ opacity: 0.8 }} />
                                                         Whiteboard
-                                                    </ContextMenuItem>
+                                                    </ContextMenuItem>}
                                                     <ContextMenuItem onClick={() => { 
                                                         setCallConfig({ active: true, isReceiving: false, callerData: activeConversation, callType: 'video' });
                                                         setIsHeaderMenuOpen(false); 
@@ -3644,7 +3611,7 @@ export default function Dashboard() {
                                                     const isOnlyUrl = (msg.content && typeof msg.content === 'string') && (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
                                                     const embedDataTop = isOnlyUrl && msg.content.trim().startsWith('http') ? detectEcosystemLink(msg.content) : null;
                                                     const isEmbedOnly = isOnlyUrl && !!embedDataTop;
-                                                    const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content));
+                                                    const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content, msg.attachmentType));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     
                                                     const prevMsg = index > 0 ? array[index - 1] : null;
@@ -3808,7 +3775,7 @@ export default function Dashboard() {
 
                                                                         // Check if message is strictly just a URL
                                                                         const isOnlyUrl = (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
-                                                                        const hasAttachment = embedData || isImageUrl(msg.content) || isAudioUrl(msg.content) || isCloudinaryUrl(msg.content);
+                                                                        const hasAttachment = embedData || isImageUrl(msg.content, msg.attachmentType) || isAudioUrl(msg.content, msg.attachmentType) || isVideoUrl(msg.content, msg.attachmentType) || isCloudinaryUrl(msg.content);
                                                                         const shouldShowText = !(isOnlyUrl && hasAttachment);
 
                                                                         return (
@@ -3844,32 +3811,60 @@ export default function Dashboard() {
                                                                                     </EmbedCard>
                                                                                 )}
 
-                                                                                {isImageUrl(msg.content) && (
+                                                                                {isVideoUrl(msg.content, msg.attachmentType) && (
+                                                                                    <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', marginTop: shouldShowText ? '8px' : '0' }}>
+                                                                                        <video
+                                                                                            src={msg.content}
+                                                                                            controls
+                                                                                            playsInline
+                                                                                            style={{ display: 'block', maxWidth: '100%', maxHeight: '360px', borderRadius: '8px' }}
+                                                                                        />
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => openMediaViewer(msg.content, 'video', msg.attachmentName || 'Video')}
+                                                                                            aria-label="View video fullscreen"
+                                                                                            title="View fullscreen"
+                                                                                            style={{ position: 'absolute', top: '8px', right: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', border: 'none', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.65)', color: '#fff', cursor: 'pointer' }}
+                                                                                        >
+                                                                                            <Maximize2 size={18} />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {isImageUrl(msg.content, msg.attachmentType) && (
                                                                                     msg.content.startsWith('data:image/') ? (
                                                                                         <div onClick={() => {
-                                                                                            if (activeTab === 'communities') {
+                                                                                            if (isMobileViewport) {
+                                                                                                setMobileWhiteboardDesign(msg.content);
+                                                                                            } else if (activeTab === 'communities') {
                                                                                                 setCommunityTab('live coding');
                                                                                             } else {
                                                                                                 setIsWhiteboardOpen(true);
                                                                                             }
-                                                                                        }} title="Open Whiteboard" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', cursor: 'pointer' }}>
+                                                                                        }} title={isMobileViewport ? 'View design' : 'Open Whiteboard'} style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', cursor: 'pointer' }}>
                                                                                             <AttachmentImage src={msg.content} alt="Whiteboard design" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
                                                                                         </div>
                                                                                     ) : (
-                                                                                        <a href={msg.content} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px' }}>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => openMediaViewer(msg.content, 'image', msg.attachmentName || 'Photo')}
+                                                                                            aria-label="View photo fullscreen"
+                                                                                            title="View fullscreen"
+                                                                                            style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+                                                                                        >
                                                                                             <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
-                                                                                        </a>
+                                                                                        </button>
                                                                                     )
                                                                                 )}
 
-                                                                                {isAudioUrl(msg.content) && (
+                                                                                {isAudioUrl(msg.content, msg.attachmentType) && (
                                                                                     <CustomAudioPlayer src={msg.content} isOwnMessage={isOwnMessage} avatarUrl={msg.sender?.avatarUrl} />
                                                                                 )}
 
-                                                                                {isCloudinaryUrl(msg.content) && !isImageUrl(msg.content) && !isAudioUrl(msg.content) && (
+                                                                                {isCloudinaryUrl(msg.content) && !isImageUrl(msg.content, msg.attachmentType) && !isAudioUrl(msg.content, msg.attachmentType) && !isVideoUrl(msg.content, msg.attachmentType) && (
                                                                                     <AttachmentLink href={msg.content} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', marginTop: '8px' }}>
                                                                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
-                                                                                        View Document
+                                                                                        {msg.attachmentName || 'Download file'}
                                                                                     </AttachmentLink>
                                                                                 )}
 
@@ -3977,12 +3972,12 @@ export default function Dashboard() {
                                                     ref={fileInputRef}
                                                     style={{ display: 'none' }}
                                                     onChange={handleFileSelect}
-                                                    accept="image/*,.pdf,.doc,.docx"
+                                                    accept="*/*"
                                                 />
 
                                                 <AttachButton
                                                     type="button"
-                                                    title="Attach File"
+                                                    title="Attach a file or video"
                                                     onClick={() => fileInputRef.current?.click()}
                                                     disabled={isUploading || isRecording}
                                                 >
@@ -4033,13 +4028,7 @@ export default function Dashboard() {
                                                 conversationId: activeConversationId,
                                                 senderId: mongoUserId,
                                                 content: dataUrl,
-                                                isCodeSnippet: false,
-                                                language: 'plaintext'
-                                            });
-                                            socket.emit('send_message', {
-                                                conversationId: activeConversationId,
-                                                senderId: mongoUserId,
-                                                content: "I made a new design in the whiteboard! Please open the whiteboard to edit it.",
+                                                attachmentType: 'image/jpeg',
                                                 isCodeSnippet: false,
                                                 language: 'plaintext'
                                             });
@@ -4082,9 +4071,9 @@ export default function Dashboard() {
                                 }}>
                                     <CircleDashed size={64} color="var(--colors-accent)" strokeWidth={1.5} style={{ filter: 'drop-shadow(0 0 8px rgba(6,182,212,0.5))' }} />
                                 </div>
-                                <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{activeStatus ? activeStatus : 'Share statuses'}</h2>
+                                <h2 style={{ color: 'var(--colors-textMain)', fontSize: '2.5rem', marginBottom: '16px', fontWeight: '500', letterSpacing: '-0.5px', position: 'relative', zIndex: 1, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Share statuses</h2>
                                 <p style={{ color: 'var(--colors-textMuted)', fontSize: '1.1rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6', position: 'relative', zIndex: 1 }}>
-                                    {activeStatus ? 'No current status updates to show.' : 'Share photos, videos and text that disappear after 24 hours.'}
+                                    Share photos, videos and text that disappear after 24 hours.
                                 </p>
                             </div>
                         )}
@@ -4146,7 +4135,7 @@ export default function Dashboard() {
                                 </SubPaneHeader>
                                 <div style={{ flex: 1, backgroundColor: 'var(--colors-surface)', padding: '24px', overflowY: 'auto' }}>
                                     {activeContactPane === 'media' && (() => {
-                                        const mediaMsgs = messages.filter(m => m.content && (m.content.includes('res.cloudinary.com') || m.content.startsWith('data:image') || m.content.startsWith('data:video')));
+                                        const mediaMsgs = messages.filter(m => m.content && (isImageUrl(m.content, m.attachmentType) || isVideoUrl(m.content, m.attachmentType)));
                                         return (
                                             <div>
                                                 {mediaMsgs.length === 0 ? (
@@ -4158,7 +4147,7 @@ export default function Dashboard() {
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                                                         {mediaMsgs.map(msg => (
                                                             <div key={msg._id} style={{ width: '100%', aspectRatio: '1', backgroundColor: 'var(--colors-bg)', borderRadius: '8px', overflow: 'hidden' }}>
-                                                                {msg.content.includes('video') || msg.content.startsWith('data:video') ? (
+                                                                {isVideoUrl(msg.content, msg.attachmentType) ? (
                                                                     <video src={msg.content} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                                 ) : (
                                                                     <img src={msg.content} alt="Media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -4464,7 +4453,65 @@ export default function Dashboard() {
                 )}
             </RightDrawer>
 
-            {isWhiteboardOpen && (
+            {mobileWhiteboardDesign && isMobileViewport && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: '#000', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', backgroundColor: '#111827', color: '#fff' }}>
+                        <button
+                            type="button"
+                            onClick={() => window.history.back()}
+                            aria-label="Back to chat"
+                            title="Back to chat"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'inherit', padding: '8px', cursor: 'pointer' }}
+                        >
+                            <ArrowLeft size={24} />
+                        </button>
+                        <span style={{ fontSize: '1rem', fontWeight: 600 }}>Whiteboard design</span>
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+                        <img src={mobileWhiteboardDesign} alt="Shared whiteboard design" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                    </div>
+                </div>
+            )}
+
+            {mediaViewer && (
+                <div
+                    role="presentation"
+                    onClick={() => setMediaViewer(null)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.96)' }}
+                >
+                    <div style={{ position: 'absolute', top: 'max(12px, env(safe-area-inset-top))', left: '16px', right: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', zIndex: 1 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '16px' }}>{mediaViewer.title}</span>
+                        <button
+                            type="button"
+                            onClick={() => setMediaViewer(null)}
+                            aria-label="Close media viewer"
+                            title="Close"
+                            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', border: 'none', borderRadius: '50%', color: '#fff', backgroundColor: 'rgba(255,255,255,0.12)', cursor: 'pointer' }}
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+                    {mediaViewer.type === 'video' ? (
+                        <video
+                            src={mediaViewer.src}
+                            controls
+                            autoPlay
+                            playsInline
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        />
+                    ) : (
+                        <img
+                            src={mediaViewer.src}
+                            alt={mediaViewer.title || 'Full-size image'}
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        />
+                    )}
+                </div>
+            )}
+
+            {isWhiteboardOpen && !isMobileViewport && (
                 <Suspense fallback={null}><Whiteboard
                     socket={socket}
                     conversationId={activeConversationId}
@@ -4475,13 +4522,7 @@ export default function Dashboard() {
                             conversationId: activeConversationId,
                             senderId: mongoUserId,
                             content: dataUrl,
-                            isCodeSnippet: false,
-                            language: 'plaintext'
-                        });
-                        socket.emit('send_message', {
-                            conversationId: activeConversationId,
-                            senderId: mongoUserId,
-                            content: "I made a new design in the whiteboard! Please open the whiteboard to edit it.",
+                            attachmentType: 'image/jpeg',
                             isCodeSnippet: false,
                             language: 'plaintext'
                         });
@@ -4991,8 +5032,16 @@ export default function Dashboard() {
                         <div style={{ flex: 1, minHeight: '200px', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' }}>
                             {chatUploadFile?.type?.startsWith('video/') ? (
                                 <video src={chatUploadPreview} controls style={{ maxWidth: '100%', maxHeight: '400px' }} />
-                            ) : (
+                            ) : chatUploadFile?.type?.startsWith('image/') ? (
                                 <img src={chatUploadPreview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '32px', color: '#fff', textAlign: 'center' }}>
+                                    <FileText size={48} />
+                                    <span style={{ overflowWrap: 'anywhere' }}>{chatUploadFile?.name}</span>
+                                    <span style={{ color: '#94A3B8', fontSize: '0.9rem' }}>
+                                        {chatUploadFile ? `${(chatUploadFile.size / (1024 * 1024)).toFixed(2)} MB` : ''}
+                                    </span>
+                                </div>
                             )}
                         </div>
                         <input

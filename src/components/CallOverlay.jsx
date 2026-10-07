@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { styled, keyframes } from '../stitches.config.js';
 import { Phone, PhoneOff, Video, Mic, MicOff, VideoOff, UserPlus, X } from 'lucide-react';
 
@@ -251,18 +251,31 @@ const CallOverlay = ({
     const [callDuration, setCallDuration] = useState(0);
     const [isAddingPerson, setIsAddingPerson] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
+    const [isAnswering, setIsAnswering] = useState(false);
 
     const localStream = useRef(null);
+    const remoteStream = useRef(null);
     const peerConnection = useRef(null);
     const callAcceptedRef = useRef(false);
     const ringTimeoutRef = useRef(null);
     const timerRef = useRef(null);
     const pendingCandidates = useRef([]);
     const remoteVideoEl = useRef(null);
+    const localVideoEl = useRef(null);
     const ringtoneRef = useRef(null);
 
     const remoteVideoCallbackRef = useCallback((el) => {
         remoteVideoEl.current = el;
+        if (el && remoteStream.current) {
+            el.srcObject = remoteStream.current;
+        }
+    }, []);
+
+    const localVideoCallbackRef = useCallback((el) => {
+        localVideoEl.current = el;
+        if (el && localStream.current) {
+            el.srcObject = localStream.current;
+        }
     }, []);
 
     useEffect(() => {
@@ -290,7 +303,9 @@ const CallOverlay = ({
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audio.loop = true;
         audio.volume = 0.5;
-        audio.play().catch(() => {}); // may fail if no user interaction yet
+        audio.play().catch((error) => {
+            console.warn('Unable to play call ringtone:', error);
+        });
         ringtoneRef.current = audio;
         return () => {
             audio.pause();
@@ -310,10 +325,21 @@ const CallOverlay = ({
 
         pc.ontrack = (e) => {
             const remoteStr = e.streams[0];
+            remoteStream.current = remoteStr;
             if (remoteVideoEl.current) {
                 remoteVideoEl.current.srcObject = remoteStr;
             }
-            setRemoteVideoActive(remoteStr.getVideoTracks().some(t => t.enabled));
+            const updateRemoteVideoState = () => {
+                setRemoteVideoActive(remoteStr.getVideoTracks().some(
+                    track => track.enabled && track.readyState === 'live'
+                ));
+            };
+            remoteStr.getVideoTracks().forEach(track => {
+                track.onmute = updateRemoteVideoState;
+                track.onunmute = updateRemoteVideoState;
+                track.onended = updateRemoteVideoState;
+            });
+            updateRemoteVideoState();
         };
 
         if (localStream.current) {
@@ -339,8 +365,7 @@ const CallOverlay = ({
             audio: { echoCancellation: true, noiseSuppression: true },
         });
         localStream.current = stream;
-        const localEl = document.getElementById('local-video-el');
-        if (localEl) localEl.srcObject = stream;
+        if (localVideoEl.current) localVideoEl.current.srcObject = stream;
         return stream;
     };
 
@@ -364,6 +389,8 @@ const CallOverlay = ({
     };
 
     const answerCall = async () => {
+        if (isAnswering) return;
+        setIsAnswering(true);
         try {
             await getMedia();
             setCallAccepted(true);
@@ -392,7 +419,7 @@ const CallOverlay = ({
             socket.emit('log_call', {
                 callerId: mongoUserId,
                 receiverId: otherUserId,
-                conversationId: isGroup ? activeConversation._id : undefined,
+                conversationId: activeConversation?._id,
                 type: callConfig.callType,
                 status: callAcceptedRef.current ? 'completed' : 'missed'
             });
@@ -413,9 +440,30 @@ const CallOverlay = ({
         ringtoneRef.current?.pause();
         ringtoneRef.current = null;
         localStream.current?.getTracks().forEach(t => t.stop());
+        localStream.current = null;
+        remoteStream.current = null;
         peerConnection.current?.close();
+        peerConnection.current = null;
+        callAcceptedRef.current = false;
+        pendingCandidates.current = [];
+        setCallAccepted(false);
+        setIsAnswering(false);
+        setIsVideoOff(callConfig?.callType === 'audio');
+        setRemoteVideoActive(false);
+        setCallDuration(0);
         onEndCall();
     }, [socket, callConfig, activeConversation, mongoUserId, onEndCall]);
+
+    useEffect(() => {
+        if (!callConfig?.active || !callAccepted || !callConfig.isReceiving) return undefined;
+
+        ringTimeoutRef.current = setTimeout(() => {
+            handleEndCall(true);
+        }, 30000);
+        return () => {
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+        };
+    }, [callConfig?.active, callConfig?.isReceiving, callConfig?.callerData, callAccepted, handleEndCall]);
 
     // Init media on mount (caller side)
     useEffect(() => {
@@ -523,8 +571,15 @@ const CallOverlay = ({
                             <ControlButton variant="danger" onClick={() => handleEndCall(true)} title="Decline">
                                 <PhoneOff size={26} />
                             </ControlButton>
-                            <ControlButton variant="success" pulsing={true} onClick={answerCall} title="Accept">
-                                <Phone size={26} />
+                            <ControlButton
+                                variant="success"
+                                pulsing={!isAnswering}
+                                onClick={answerCall}
+                                title={isAnswering ? 'Connecting' : 'Accept'}
+                                disabled={isAnswering}
+                                style={{ opacity: isAnswering ? 0.7 : 1, cursor: isAnswering ? 'wait' : 'pointer' }}
+                            >
+                                {isAnswering ? <span>…</span> : <Phone size={26} />}
                             </ControlButton>
                         </div>
                     )}
@@ -552,7 +607,7 @@ const CallOverlay = ({
                     {/* Local tile */}
                     <VideoWrapper isLocal={true}>
                         <video
-                            id="local-video-el"
+                            ref={localVideoCallbackRef}
                             autoPlay
                             playsInline
                             muted
@@ -577,7 +632,7 @@ const CallOverlay = ({
                     <CallerNameText>{callerName}</CallerNameText>
                     <CallStatusText style={{ color: '#10B981' }}>{formatDuration(callDuration)}</CallStatusText>
                     <video ref={remoteVideoCallbackRef} autoPlay playsInline style={{ display: 'none' }} />
-                    <video id="local-video-el" autoPlay playsInline muted style={{ display: 'none' }} />
+                    <video ref={localVideoCallbackRef} autoPlay playsInline muted style={{ display: 'none' }} />
                 </CallerInfo>
             )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Eye, EyeOff, MoreVertical, Forward, RefreshCw, Trash2 } from 'lucide-react';
 
 const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUserId, markViewed, onDelete, onForward, onReshare, readReceipts = true }) => {
@@ -10,7 +10,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
         return firstUnviewed !== -1 ? firstUnviewed : 0;
     });
     const [isPaused, setIsPaused] = useState(false);
-    const [progress, setProgress] = useState(0);
+    const [progressState, setProgressState] = useState({ userIndex: initialUserIndex, statusIndex: 0, value: 0 });
     const [showMenu, setShowMenu] = useState(false);
     const [showViewers, setShowViewers] = useState(false);
     const [transitionDirection, setTransitionDirection] = useState('next');
@@ -25,7 +25,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
             if (isPaused || showMenu || showViewers) {
                 videoRef.current.pause();
             } else {
-                videoRef.current.play().catch(e => console.log('Auto-play prevented:', e));
+                videoRef.current.play().catch(error => console.log('Auto-play prevented:', error));
             }
         }
     }, [isPaused, showMenu, showViewers, statusIndex]);
@@ -49,46 +49,21 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
         }
 
         const group = groupedStatuses[userIndex];
-        if (group && group.statuses && statusIndex >= group.statuses.length) {
-            setStatusIndex(Math.max(0, group.statuses.length - 1));
+        if (!group?.statuses?.length) {
+            onClose();
         }
     }, [groupedStatuses, userIndex, statusIndex, onClose]);
 
     const DURATION = 5000; // 5 seconds per story
     const UPDATE_INTERVAL = 50; // Update progress every 50ms
+    const progress = progressState.userIndex === userIndex && progressState.statusIndex === safeStatusIndex
+        ? progressState.value
+        : 0;
+    const setProgress = useCallback((value) => {
+        setProgressState({ userIndex, statusIndex: safeStatusIndex, value });
+    }, [userIndex, safeStatusIndex]);
 
-    // Reset progress when index changes
-    useEffect(() => {
-        setProgress(0);
-    }, [safeStatusIndex, userIndex]);
-
-    // Mark as viewed when status changes
-    useEffect(() => {
-        if (currentStatus && readReceipts && !currentStatus.viewers.some(v => v === currentUserId || v._id === currentUserId)) {
-            markViewed(currentStatus._id);
-        }
-    }, [currentStatus, isOwnStatus, currentUserId, markViewed, readReceipts]);
-
-    // Handle timer
-    useEffect(() => {
-        if (isPaused || showMenu || showViewers || !currentStatus) return;
-        if (currentStatus.type === 'video') return; // Let video control its own progress
-
-        const timer = setInterval(() => {
-            setProgress(prev => {
-                const next = prev + (UPDATE_INTERVAL / DURATION) * 100;
-                if (next >= 100) {
-                    handleNext();
-                    return 0;
-                }
-                return next;
-            });
-        }, UPDATE_INTERVAL);
-
-        return () => clearInterval(timer);
-    }, [statusIndex, userIndex, isPaused, currentStatus]);
-
-    const handleNext = () => {
+    const handleNext = useCallback(() => {
         setProgress(0);
         setTransitionDirection('next');
         if (statusIndex < currentStatuses.length - 1) {
@@ -104,9 +79,35 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                 setStatusIndex(0);
             }
         } else {
-            onClose(); // Reached the end
+            onClose();
         }
-    };
+    }, [setProgress, statusIndex, currentStatuses.length, userIndex, groupedStatuses, currentUserId, onClose]);
+
+    // Mark as viewed when status changes
+    useEffect(() => {
+        if (currentStatus && readReceipts && !currentStatus.viewers.some(v => v === currentUserId || v._id === currentUserId)) {
+            markViewed(currentStatus._id);
+        }
+    }, [currentStatus, isOwnStatus, currentUserId, markViewed, readReceipts]);
+
+    // Handle timer
+    useEffect(() => {
+        if (isPaused || showMenu || showViewers || !currentStatus) return;
+        if (currentStatus.type === 'video') return; // Let video control its own progress
+
+        let currentProgress = progress;
+        const timer = setInterval(() => {
+            currentProgress += (UPDATE_INTERVAL / DURATION) * 100;
+            if (currentProgress >= 100) {
+                currentProgress = 0;
+                handleNext();
+            } else {
+                setProgress(currentProgress);
+            }
+        }, UPDATE_INTERVAL);
+
+        return () => clearInterval(timer);
+    }, [statusIndex, userIndex, isPaused, showMenu, showViewers, currentStatus, progress, setProgress, handleNext]);
 
     const handlePrev = () => {
         setProgress(0);
@@ -135,7 +136,7 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
         }
     };
 
-    const handleTouchEnd = (e) => {
+    const handleTouchEnd = () => {
         const deltaY = touchCurrentY.current - touchStartY.current;
         if (deltaY > 120) {
             onClose();
@@ -217,10 +218,13 @@ const StoryViewer = ({ groupedStatuses, initialUserIndex = 0, onClose, currentUs
                                             <RefreshCw size={16} /> Reshare
                                         </div>
                                         <div 
-                                            onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                setShowMenu(false); 
-                                                onDelete(currentStatus._id); 
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                setShowMenu(false);
+                                                setIsPaused(true);
+                                                const deleted = await onDelete(currentStatus._id);
+                                                if (deleted) setProgress(0);
+                                                setIsPaused(false);
                                             }}
                                             style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--colors-danger, #ef4444)', cursor: 'pointer' }}
                                         >

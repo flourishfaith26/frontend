@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import { styled, keyframes } from '../stitches.config.js';
-import { Key, Lock, MessageSquare, Bell, Monitor, HelpCircle, ChevronLeft, Trash2, Camera, Edit2, Check, Image as ImageIcon, Volume2, EyeOff, Shield, Smartphone, Globe, Sun, Moon, Type, DownloadCloud } from 'lucide-react';
+import { MessageSquare, Bell, Monitor, HelpCircle, ChevronLeft, Trash2, Camera, Edit2, Check, Image as ImageIcon, Volume2, EyeOff, Shield, Smartphone, Globe, Moon, Type, DownloadCloud } from 'lucide-react';
 import { techDoodlesSvg, svgToDataUri, wallpaperColors } from '../utils/wallpapers.js';
 
 const slideIn = keyframes({
@@ -577,7 +577,7 @@ export const HelpPane = ({ onBack }) => (
     </PaneContainer>
 );
 
-export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTokenSilently, BACKEND_URL }) => {
+export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTokenSilently, BACKEND_URL, onViewProfilePicture }) => {
     const [isEditingName, setIsEditingName] = React.useState(false);
     const [name, setName] = React.useState(currentUser?.displayName || '');
     const [isEditingAbout, setIsEditingAbout] = React.useState(false);
@@ -627,7 +627,8 @@ export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTok
                     <img 
                         src={currentUser?.avatarUrl || 'https://via.placeholder.com/200'} 
                         alt="Profile" 
-                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 8px 16px rgba(0,0,0,0.2)', border: '4px solid var(--colors-surface)' }}
+                        onClick={() => onViewProfilePicture?.(currentUser?.avatarUrl)}
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 8px 16px rgba(0,0,0,0.2)', border: '4px solid var(--colors-surface)', cursor: 'zoom-in' }}
                     />
                     <div 
                         style={{ position: 'absolute', bottom: '4px', right: '4px', backgroundColor: 'var(--colors-accent)', padding: '14px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(6, 182, 212, 0.4)', transition: 'transform 0.2s', '&:hover': { transform: 'scale(1.05)' } }}
