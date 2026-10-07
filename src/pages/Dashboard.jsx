@@ -4631,6 +4631,7 @@ export default function Dashboard() {
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => openConversationWith(contextMenu.callLog.contactId, 'video')}>
                                 <Video size={16} />
+
                                 Video Call
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => deleteCallLog(contextMenu.callLog.id)} style={{ color: '#ef4444' }}>
