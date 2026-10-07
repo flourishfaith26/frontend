@@ -1,10 +1,11 @@
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { styled } from './stitches.config.js';
-import Home from './pages/Home';
-import Dashboard from './pages/Dashboard';
-import ProfileSetup from './pages/ProfileSetup';
-import AuthPage from './pages/AuthPage';
+const Home = lazy(() => import('./pages/Home'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ProfileSetup = lazy(() => import('./pages/ProfileSetup'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
 
 // Custom Stitches loading container
 const LoadingContainer = styled('div', {
@@ -19,6 +20,63 @@ const LoadingContainer = styled('div', {
   fontWeight: 'bold',
   fontFamily: 'system-ui, sans-serif'
 });
+
+const SESSION_TIMEOUT_MS = 48 * 60 * 60 * 1000;
+const SESSION_ACTIVITY_KEY_PREFIX = 'devsup:last-active:';
+
+function SessionTimeout() {
+  const { isAuthenticated, isLoading, user, logout } = useAuth0();
+  const isLoggingOut = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !user?.sub) return undefined;
+
+    const activityKey = `${SESSION_ACTIVITY_KEY_PREFIX}${user.sub}`;
+    const lastActivity = Number(localStorage.getItem(activityKey));
+    const now = Date.now();
+
+    const expireSession = () => {
+      if (isLoggingOut.current) return;
+      isLoggingOut.current = true;
+      localStorage.removeItem(activityKey);
+      void logout({ logoutParams: { returnTo: window.location.origin } });
+    };
+
+    if (Number.isFinite(lastActivity) && lastActivity > 0 && now - lastActivity >= SESSION_TIMEOUT_MS) {
+      expireSession();
+      return undefined;
+    }
+
+    const updateActivity = () => {
+      const currentTime = Date.now();
+      const previousActivity = Number(localStorage.getItem(activityKey));
+      if (Number.isFinite(previousActivity) && previousActivity > 0 && currentTime - previousActivity >= SESSION_TIMEOUT_MS) {
+        expireSession();
+        return;
+      }
+      localStorage.setItem(activityKey, String(currentTime));
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') updateActivity();
+    };
+
+    localStorage.setItem(activityKey, String(now));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', updateActivity);
+    const activityInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') updateActivity();
+    }, 60 * 1000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', updateActivity);
+      window.clearInterval(activityInterval);
+    };
+  }, [isAuthenticated, isLoading, logout, user?.sub]);
+
+  return null;
+}
 
 const Auth0ProviderWithNavigate = ({ children }) => {
   const navigate = useNavigate();
@@ -44,7 +102,8 @@ const Auth0ProviderWithNavigate = ({ children }) => {
       cacheLocation="localstorage"
       onRedirectCallback={onRedirectCallback}
     >
-      {children}
+    <SessionTimeout />
+    {children}
     </Auth0Provider>
   );
 };
@@ -70,29 +129,31 @@ function AppRoutes() {
   }
 
   return (
-    <Routes>
-      <Route 
-        path="/" 
-        element={!isAuthenticated ? <Home /> : <Navigate to="/dashboard" replace />} 
-      />
-      <Route 
-        path="/login" 
-        element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
-      />
-      <Route 
-        path="/dashboard" 
-        element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} 
-      />
-      <Route 
-        path="/setup" 
-        element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/" replace />} 
-      />
-      {/* Catch-all route for any unmatched paths */}
-      <Route 
-        path="*" 
-        element={<Navigate to={isAuthenticated ? "/dashboard" : "/"} replace />} 
-      />
-    </Routes>
+    <Suspense fallback={<LoadingContainer>Loading DevSup...</LoadingContainer>}>
+      <Routes>
+        <Route 
+          path="/" 
+          element={!isAuthenticated ? <Home /> : <Navigate to="/dashboard" replace />} 
+        />
+        <Route 
+          path="/login" 
+          element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
+        />
+        <Route 
+          path="/dashboard" 
+          element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} 
+        />
+        <Route 
+          path="/setup" 
+          element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/" replace />} 
+        />
+        {/* Catch-all route for any unmatched paths */}
+        <Route 
+          path="*" 
+          element={<Navigate to={isAuthenticated ? "/dashboard" : "/"} replace />} 
+        />
+      </Routes>
+    </Suspense>
   );
 }
 function App() {

@@ -1,21 +1,60 @@
-import { useEffect, useState, useRef } from 'react';
+import { lazy, Suspense, useEffect, useState, useRef } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { io } from 'socket.io-client';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
+import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
+import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import markup from 'react-syntax-highlighter/dist/esm/languages/prism/markup';
+import css from 'react-syntax-highlighter/dist/esm/languages/prism/css';
+import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
+import java from 'react-syntax-highlighter/dist/esm/languages/prism/java';
+import cpp from 'react-syntax-highlighter/dist/esm/languages/prism/cpp';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import javascriptHighlight from 'highlight.js/lib/languages/javascript';
+import typescriptHighlight from 'highlight.js/lib/languages/typescript';
+import pythonHighlight from 'highlight.js/lib/languages/python';
+import xmlHighlight from 'highlight.js/lib/languages/xml';
+import cssHighlight from 'highlight.js/lib/languages/css';
+import jsonHighlight from 'highlight.js/lib/languages/json';
+import javaHighlight from 'highlight.js/lib/languages/java';
+import cppHighlight from 'highlight.js/lib/languages/cpp';
 import { styled, keyframes } from '../stitches.config.js';
 import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
-import Whiteboard from '../components/Whiteboard';
-import CallOverlay from '../components/CallOverlay';
+const Whiteboard = lazy(() => import('../components/Whiteboard'));
+const CallOverlay = lazy(() => import('../components/CallOverlay'));
 import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Globe, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
-import StoryViewer from '../components/StoryViewer';
+const StoryViewer = lazy(() => import('../components/StoryViewer'));
 import { motion } from 'framer-motion';
-import StatusUploadModal from '../components/StatusUploadModal';
-import EventsView from '../components/EventsView';
+const StatusUploadModal = lazy(() => import('../components/StatusUploadModal'));
+const EventsView = lazy(() => import('../components/EventsView'));
 import { useNavigate } from 'react-router-dom';
+
+[
+    ['javascript', javascript],
+    ['typescript', typescript],
+    ['python', python],
+    ['xml', markup],
+    ['html', markup],
+    ['css', css],
+    ['json', json],
+    ['java', java],
+    ['cpp', cpp],
+].forEach(([name, language]) => SyntaxHighlighter.registerLanguage(name, language));
+
+[
+    ['javascript', javascriptHighlight],
+    ['typescript', typescriptHighlight],
+    ['python', pythonHighlight],
+    ['xml', xmlHighlight],
+    ['css', cssHighlight],
+    ['json', jsonHighlight],
+    ['java', javaHighlight],
+    ['cpp', cppHighlight],
+].forEach(([name, language]) => hljs.registerLanguage(name, language));
 
 // --- Stitches Components ---
 const AppContainer = styled('div', {
@@ -312,54 +351,6 @@ const SelectionToolbarActions = styled('div', {
     display: 'flex',
     alignItems: 'center',
     gap: '24px',
-});
-
-const SelectionActionButton = styled('button', {
-    minHeight: '40px',
-    minWidth: 'unset',
-    padding: '0 17px',
-    borderRadius: '999px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    fontFamily: 'inherit',
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-    transition: 'background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease',
-    '&:active': { transform: 'scale(0.97)' },
-    '&:focus-visible': { outline: '2px solid #00a884', outlineOffset: '2px' },
-    '&:disabled': { opacity: 0.45, cursor: 'not-allowed' },
-    variants: {
-        intent: {
-            cancel: {
-                backgroundColor: 'transparent',
-                border: '1px solid #52616a',
-                color: '#d1d7db',
-                '&:hover:not(:disabled)': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    borderColor: '#8696a0',
-                },
-            },
-            danger: {
-                backgroundColor: '#d9534f',
-                border: '1px solid #d9534f',
-                color: '#fff',
-                boxShadow: '0 2px 8px rgba(217, 83, 79, 0.18)',
-                '&:hover:not(:disabled)': {
-                    backgroundColor: '#c74743',
-                    borderColor: '#c74743',
-                },
-            },
-        },
-    },
-    '@media (max-width: 480px)': {
-        minHeight: '40px',
-        padding: '0 13px',
-        fontSize: '0.85rem',
-    },
 });
 
 const MobileOnlyText = styled('span', {
@@ -3784,7 +3775,7 @@ export default function Dashboard() {
                                                                         if (msg.isCodeSnippet) {
                                                                             return (
                                                                                 <SyntaxHighlighter
-                                                                                    language={msg.language}
+                                                                                    language={msg.language === 'plaintext' ? 'text' : msg.language}
                                                                                     style={vscDarkPlus}
                                                                                     customStyle={{ borderRadius: '10px', margin: '0', fontSize: '0.9rem' }}
                                                                                 >
@@ -4032,7 +4023,7 @@ export default function Dashboard() {
                                 </>
                             ) : communityTab === 'live coding' ? (
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: 0 }}>
-                                    <Whiteboard
+                                    <Suspense fallback={null}><Whiteboard
                                         socket={socket}
                                         conversationId={activeConversationId}
                                         mongoUserId={mongoUserId}
@@ -4055,10 +4046,10 @@ export default function Dashboard() {
                                             setCommunityTab('chat');
                                         }}
                                         embedded={true}
-                                    />
+                                    /></Suspense>
                                 </div>
                             ) : (
-                                <EventsView type={communityTab} />
+                                <Suspense fallback={null}><EventsView type={communityTab} /></Suspense>
                             )}
                         </div>
                 ) : (
@@ -4474,7 +4465,7 @@ export default function Dashboard() {
             </RightDrawer>
 
             {isWhiteboardOpen && (
-                <Whiteboard
+                <Suspense fallback={null}><Whiteboard
                     socket={socket}
                     conversationId={activeConversationId}
                     mongoUserId={mongoUserId}
@@ -4496,7 +4487,7 @@ export default function Dashboard() {
                         });
                         setIsWhiteboardOpen(false);
                     }}
-                />
+                /></Suspense>
             )}
 
             {/* Create Conversation Modal */}
@@ -4967,16 +4958,16 @@ export default function Dashboard() {
             )}
 
             {isStatusModalOpen && (
-                <StatusUploadModal
+                <Suspense fallback={null}><StatusUploadModal
                     onClose={() => setIsStatusModalOpen(false)}
                     BACKEND_URL={BACKEND_URL}
                     getAccessTokenSilently={getAccessTokenSilently}
                     onUpload={handleStatusUpload}
-                />
+                /></Suspense>
             )}
 
             {storyViewerInitialUserIndex !== null && (
-                <StoryViewer
+                <Suspense fallback={null}><StoryViewer
                     groupedStatuses={groupedStatuses}
                     initialUserIndex={storyViewerInitialUserIndex}
                     onClose={() => setStoryViewerInitialUserIndex(null)}
@@ -4986,7 +4977,7 @@ export default function Dashboard() {
                     onForward={handleForwardStatus}
                     onReshare={handleReshareStatus}
                     readReceipts={appSettings.readReceipts}
-                />
+                /></Suspense>
             )}
 
             {/* Chat Image Upload Modal */}
@@ -5031,14 +5022,14 @@ export default function Dashboard() {
                 </ModalOverlay>
             )}
 
-            <CallOverlay
+            <Suspense fallback={null}><CallOverlay
                 socket={socket}
                 mongoUserId={mongoUserId}
                 activeConversation={activeConversation}
                 callConfig={callConfig}
                 currentUserData={currentUserData}
                 onEndCall={() => setCallConfig({ active: false, isReceiving: false, callerData: null, callType: 'video' })}
-            />
+            /></Suspense>
 
             {contextMenu.visible && (contextMenu.message || contextMenu.callLog || contextMenu.conversation) && (
                 <>
