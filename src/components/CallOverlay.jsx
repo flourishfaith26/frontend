@@ -259,6 +259,7 @@ const CallOverlay = ({
     const timerRef = useRef(null);
     const pendingCandidates = useRef([]);
     const remoteVideoEl = useRef(null);
+    const ringtoneRef = useRef(null);
 
     const remoteVideoCallbackRef = useCallback((el) => {
         remoteVideoEl.current = el;
@@ -275,6 +276,28 @@ const CallOverlay = ({
         timerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
         return () => clearInterval(timerRef.current);
     }, [callAccepted]);
+
+    // Ringtone: play while ringing/receiving, stop when accepted or ended
+    useEffect(() => {
+        if (!callConfig?.active) return;
+        if (callAccepted) {
+            // Stop ringing once call is accepted
+            ringtoneRef.current?.pause();
+            ringtoneRef.current = null;
+            return;
+        }
+        // Create and play ringtone
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.loop = true;
+        audio.volume = 0.5;
+        audio.play().catch(() => {}); // may fail if no user interaction yet
+        ringtoneRef.current = audio;
+        return () => {
+            audio.pause();
+            audio.currentTime = 0;
+            ringtoneRef.current = null;
+        };
+    }, [callConfig?.active, callAccepted]);
 
     const buildPeerConnection = useCallback((targetUserId) => {
         const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -332,7 +355,10 @@ const CallOverlay = ({
             userToCall: other._id,
             signalData: offer,
             from: mongoUserId,
-            callerInfo: { name: currentUserData?.displayName || 'Someone' },
+            callerInfo: {
+                name: currentUserData?.displayName || 'Someone',
+                avatarUrl: currentUserData?.avatarUrl || ''
+            },
             callType: callConfig.callType
         });
     };
@@ -383,6 +409,9 @@ const CallOverlay = ({
                 }
             }
         }
+        // Stop ringtone
+        ringtoneRef.current?.pause();
+        ringtoneRef.current = null;
         localStream.current?.getTracks().forEach(t => t.stop());
         peerConnection.current?.close();
         onEndCall();
@@ -460,8 +489,12 @@ const CallOverlay = ({
         ? callConfig.callerData?.callerInfo?.name || 'Someone'
         : activeConversation?.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Contact';
 
-    const callerAvatar = activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl
-        || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`;
+    const callerAvatar = callConfig.isReceiving
+        ? (callConfig.callerData?.callerInfo?.avatarUrl
+            || activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl
+            || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`)
+        : (activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl
+            || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`);
 
     const myName = currentUserData?.displayName || 'You';
     const myAvatar = currentUserData?.avatarUrl
