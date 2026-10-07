@@ -1647,6 +1647,16 @@ export default function Dashboard() {
                     setActiveConversationId(prev => prev === deletedConvId ? null : prev);
                 });
 
+                newSocket.on('member_left', ({ conversationId, userId }) => {
+                    setConversations(prev => prev.map(c => {
+                        if (c._id !== conversationId) return c;
+                        return {
+                            ...c,
+                            participants: c.participants.filter(p => (p._id || p) !== userId && (p._id || p).toString() !== userId)
+                        };
+                    }));
+                });
+
                 newSocket.on('call_user', (data) => {
                     // When receiving a call
                     setCallConfig({
@@ -3158,7 +3168,14 @@ export default function Dashboard() {
                                                         Clear messages
                                                     </ContextMenuItem>
                                                     <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '4px 8px' }} />
-                                                    <ContextMenuItem onClick={(e) => { deleteConversation(e, activeConversation._id); setIsHeaderMenuOpen(false); }} style={{ color: '#ef4444' }}>
+                                                    <ContextMenuItem onClick={(e) => { 
+                                                        if (activeConversation.type === 'group') {
+                                                            socket.emit('leave_conversation', { conversationId: activeConversation._id, userId: mongoUserId });
+                                                        } else {
+                                                            deleteConversation(e, activeConversation._id); 
+                                                        }
+                                                        setIsHeaderMenuOpen(false); 
+                                                    }} style={{ color: '#ef4444' }}>
                                                         <LogOut size={18} style={{ opacity: 0.8 }} />
                                                         {activeConversation.type === 'group' ? 'Exit group' : 'Delete chat'}
                                                     </ContextMenuItem>
@@ -3915,7 +3932,10 @@ export default function Dashboard() {
 
                         <div style={{ height: '8px', backgroundColor: 'var(--colors-bg)' }}></div>
 
-                        {activeConversation.type === 'group' && (activeConversation.admins?.includes(mongoUserId) || (!activeConversation.admins?.length && activeConversation.participants?.[0]?._id === mongoUserId)) && (
+                        {activeConversation.type === 'group' && (
+                            activeConversation.admins?.some(a => (a._id || a).toString() === mongoUserId) ||
+                            (!activeConversation.admins?.length && activeConversation.participants?.[0]?._id === mongoUserId)
+                        ) && (
                             <>
                                 <div style={{ padding: '24px 16px', backgroundColor: 'var(--colors-surface)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div style={{ color: 'var(--colors-accent)', fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Group Settings</div>
@@ -3934,10 +3954,9 @@ export default function Dashboard() {
                                                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                                                         body: JSON.stringify({ allowAnyMemberToAdd: !activeConversation.allowAnyMemberToAdd })
                                                     });
-                                                    if(res.ok) {
+                                                    if (res.ok) {
                                                         const updated = await res.json();
                                                         setConversations(prev => prev.map(c => c._id === updated._id ? updated : c));
-                                                        if (activeConversationId === updated._id) setActiveConversationId(updated._id);
                                                     }
                                                 } catch (e) {
                                                     console.error('Failed to update group settings', e);
@@ -4587,9 +4606,16 @@ export default function Dashboard() {
                     <ContextMenuContainer style={{ top: contextMenu.y, left: contextMenu.x, zIndex: 2000, position: 'fixed' }}>
                     {contextMenu.conversation && (
                         <>
-                            <ContextMenuItem onClick={(e) => { setContextMenu({ ...contextMenu, visible: false }); deleteConversation(e, contextMenu.conversation._id); }} style={{ color: '#ef4444' }}>
+                            <ContextMenuItem onClick={(e) => { 
+                                setContextMenu({ ...contextMenu, visible: false }); 
+                                if (contextMenu.conversation.type === 'group') {
+                                    socket.emit('leave_conversation', { conversationId: contextMenu.conversation._id, userId: mongoUserId });
+                                } else {
+                                    deleteConversation(e, contextMenu.conversation._id); 
+                                }
+                            }} style={{ color: '#ef4444' }}>
                                 <Trash2 size={16} />
-                                Delete {contextMenu.conversation.type === 'group' ? 'Community' : 'Chat'}
+                                {contextMenu.conversation.type === 'group' ? 'Leave Community' : 'Delete Chat'}
                             </ContextMenuItem>
                             <ContextMenuItem onClick={() => setContextMenu({ ...contextMenu, visible: false })}>
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"></path></svg>
