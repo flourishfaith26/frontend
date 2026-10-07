@@ -1295,6 +1295,11 @@ export default function Dashboard() {
     const [disappearingConversations, setDisappearingConversations] = useState([]);
     const [toastMessage, setToastMessage] = useState(null);
     const [isSelectingMessages, setIsSelectingMessages] = useState(false);
+    const [selectedMessages, setSelectedMessages] = useState([]);
+    const [selectedChats, setSelectedChats] = useState([]);
+    const [isChatsSelectionMode, setIsChatsSelectionMode] = useState(false);
+    const [selectedCallLogs, setSelectedCallLogs] = useState([]);
+    const [isCallLogsSelectionMode, setIsCallLogsSelectionMode] = useState(false);
 
     useEffect(() => {
         if (toastMessage) {
