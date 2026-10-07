@@ -1169,7 +1169,19 @@ const formatMessageDate = (dateString) => {
 const formatMessageClock = (dateString) => {
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+};
+
+const compareMessages = (a, b) => {
+    const aHasSequence = Number.isFinite(a.sequence);
+    const bHasSequence = Number.isFinite(b.sequence);
+
+    if (aHasSequence !== bHasSequence) return aHasSequence ? 1 : -1;
+    if (aHasSequence && a.sequence !== b.sequence) return a.sequence - b.sequence;
+
+    const createdAtDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (createdAtDifference !== 0) return createdAtDifference;
+    return String(a._id || '').localeCompare(String(b._id || ''));
 };
 
 // --- Main Dashboard Component ---
@@ -3200,7 +3212,8 @@ export default function Dashboard() {
                                             </div>
                                         ) : (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'flex-start' }}>
-                                                {messages.filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg, index, array) => {
+                                                {[...messages].sort(compareMessages).filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg, index, array) => {
+
 
                                                     const isOwnMessage = msg.sender?._id === mongoUserId;
                                                     const isGroup = activeConversation?.type === 'group';

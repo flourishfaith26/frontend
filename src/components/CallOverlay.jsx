@@ -8,45 +8,65 @@ const OverlayContainer = styled('div', {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(10px)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
     zIndex: 9999,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     color: '#fff',
+    overflow: 'hidden',
+});
+
+const BackgroundBlur = styled('div', {
+    position: 'absolute',
+    top: '-10%',
+    left: '-10%',
+    width: '120%',
+    height: '120%',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: 'blur(80px) brightness(0.35)',
+    zIndex: -1,
+    transform: 'scale(1.1)',
 });
 
 const VideoGrid = styled('div', {
     display: 'flex',
-    gap: '20px',
+    gap: '24px',
     flexWrap: 'wrap',
     justifyContent: 'center',
     width: '100%',
     maxWidth: '1200px',
-    padding: '20px',
+    padding: '40px 20px 140px',
+    height: '100%',
+    alignItems: 'center',
 });
 
 const VideoWrapper = styled('div', {
     position: 'relative',
-    width: '400px',
-    height: '300px',
-    backgroundColor: '#1E293B',
-    borderRadius: '16px',
+    width: '45%',
+    minWidth: '320px',
+    aspectRatio: '16/9',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: '24px',
     overflow: 'hidden',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(20px)',
+    transition: 'all 0.3s ease',
     '@media (max-width: 768px)': {
         width: '100%',
-        height: '250px',
+        aspectRatio: '4/3',
     },
     variants: {
         isLocal: {
             true: {
-                border: '2px solid #06B6D4'
+                border: '1px solid rgba(6, 182, 212, 0.5)',
+                boxShadow: '0 0 30px rgba(6, 182, 212, 0.15), 0 25px 50px -12px rgba(0, 0, 0, 0.5)'
             }
         }
     }
@@ -56,99 +76,144 @@ const VideoElement = styled('video', {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    transform: 'scaleX(-1)', // Mirror local video mostly, but we'll apply it globally for simplicity
+    transform: 'scaleX(-1)', // Mirror local video mostly
 });
 
 const CallerInfo = styled('div', {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: '30px',
+    marginBottom: '80px',
+    zIndex: 10,
+});
+
+const CallerNameText = styled('h2', {
+    fontSize: '2.5rem',
+    fontWeight: '700',
+    margin: '32px 0 8px 0',
+    textShadow: '0 4px 20px rgba(0,0,0,0.6)',
+    letterSpacing: '0.5px',
+    background: 'linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    textAlign: 'center',
+});
+
+const CallStatusText = styled('p', {
+    fontSize: '1.1rem',
+    color: '#94A3B8',
+    margin: 0,
+    fontWeight: '600',
+    letterSpacing: '2px',
+    textTransform: 'uppercase',
+    textShadow: '0 2px 10px rgba(0,0,0,0.5)',
 });
 
 const Avatar = styled('img', {
-    width: '100px',
-    height: '100px',
+    width: '140px',
+    height: '140px',
     borderRadius: '50%',
-    border: '4px solid #06B6D4',
-    marginBottom: '16px',
-    objectFit: 'cover'
+    border: '4px solid rgba(255, 255, 255, 0.8)',
+    boxShadow: '0 15px 35px rgba(0,0,0,0.5)',
+    objectFit: 'cover',
+    zIndex: 2,
+    position: 'relative',
+    backgroundColor: '#0F172A',
 });
 
 const pulseAnimation = keyframes({
-    '0%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(6, 182, 212, 0.7)' },
-    '70%': { transform: 'scale(1.05)', boxShadow: '0 0 0 15px rgba(6, 182, 212, 0)' },
-    '100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(6, 182, 212, 0)' },
+    '0%': { boxShadow: '0 0 0 0 rgba(6, 182, 212, 0.6), 0 0 0 0 rgba(6, 182, 212, 0.4)' },
+    '50%': { boxShadow: '0 0 0 30px rgba(6, 182, 212, 0), 0 0 0 60px rgba(6, 182, 212, 0.1)' },
+    '100%': { boxShadow: '0 0 0 0 rgba(6, 182, 212, 0), 0 0 0 0 rgba(6, 182, 212, 0)' },
 });
 
 const CallingAnimation = styled('div', {
-    animation: `${pulseAnimation} 2s infinite`,
+    position: 'relative',
+    animation: `${pulseAnimation} 2s cubic-bezier(0.4, 0, 0.6, 1) infinite`,
     borderRadius: '50%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: -10,
+        left: -10,
+        right: -10,
+        bottom: -10,
+        borderRadius: '50%',
+        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2))',
+        zIndex: 1,
+    }
 });
 
 const ControlsBar = styled('div', {
     position: 'absolute',
-    bottom: '40px',
+    bottom: '50px',
     display: 'flex',
-    gap: '20px',
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    padding: '12px 24px',
-    borderRadius: '30px',
-    backdropFilter: 'blur(5px)',
+    gap: '24px',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    padding: '20px 32px',
+    borderRadius: '40px',
+    backdropFilter: 'blur(20px)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+    zIndex: 100,
 });
 
 const ControlButton = styled('button', {
-    width: '60px',
-    height: '60px',
+    width: '64px',
+    height: '64px',
     borderRadius: '50%',
-    border: '2px solid transparent',
+    border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     color: '#fff',
-    backdropFilter: 'blur(8px)',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
     variants: {
         color: {
             danger: { 
-                color: '#EF4444', 
-                borderColor: 'rgba(239, 68, 68, 0.5)',
-                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)',
+                backgroundColor: '#EF4444',
+                color: '#fff',
+                boxShadow: '0 10px 25px rgba(239, 68, 68, 0.4)',
                 '&:hover': { 
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    boxShadow: '0 0 20px rgba(239, 68, 68, 0.4)',
-                    borderColor: '#EF4444'
+                    transform: 'translateY(-4px) scale(1.05)',
+                    backgroundColor: '#DC2626',
+                    boxShadow: '0 15px 30px rgba(239, 68, 68, 0.5)',
                 } 
             },
             success: { 
-                color: '#06B6D4',
-                borderColor: 'rgba(6, 182, 212, 0.5)',
-                boxShadow: '0 0 15px rgba(6, 182, 212, 0.2)',
+                backgroundColor: '#10B981',
+                color: '#fff',
+                boxShadow: '0 10px 25px rgba(16, 185, 129, 0.4)',
                 '&:hover': { 
-                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                    boxShadow: '0 0 20px rgba(6, 182, 212, 0.4)',
-                    borderColor: '#06B6D4'
+                    transform: 'translateY(-4px) scale(1.05)',
+                    backgroundColor: '#059669',
+                    boxShadow: '0 15px 30px rgba(16, 185, 129, 0.5)',
                 } 
             },
             neutral: { 
-                color: '#94A3B8',
-                borderColor: 'rgba(148, 163, 184, 0.3)',
+                color: '#E2E8F0',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
                 '&:hover': { 
-                    backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                    borderColor: '#94A3B8',
-                    color: '#fff'
+                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    color: '#fff',
+                    transform: 'translateY(-4px)',
                 } 
             },
             active: { 
-                color: '#06B6D4', 
-                borderColor: '#06B6D4',
                 backgroundColor: 'rgba(6, 182, 212, 0.2)',
-                boxShadow: '0 0 15px rgba(6, 182, 212, 0.3)',
+                color: '#06B6D4',
+                border: '1px solid rgba(6, 182, 212, 0.5)',
+                boxShadow: '0 10px 25px rgba(6, 182, 212, 0.2)',
                 '&:hover': { 
                     backgroundColor: 'rgba(6, 182, 212, 0.3)',
-                    boxShadow: '0 0 20px rgba(6, 182, 212, 0.5)',
+                    transform: 'translateY(-4px)',
                 } 
             }
         },
@@ -185,6 +250,7 @@ const CallOverlay = ({
 
     const [isAddingPerson, setIsAddingPerson] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
+    const ringTimeoutRef = useRef(null);
 
     useEffect(() => {
         if (toastMsg) {
@@ -212,6 +278,13 @@ const CallOverlay = ({
                 if (!callConfig.isReceiving) {
                     // We are initiating the call
                     initiateCall(currentStream);
+                    
+                    // Start 30-second ring timeout
+                    ringTimeoutRef.current = setTimeout(() => {
+                        if (!callAcceptedRef.current) {
+                            handleEndCall(true);
+                        }
+                    }, 30000);
                 }
             } catch (err) {
                 console.error("Failed to get local stream", err);
@@ -233,6 +306,9 @@ const CallOverlay = ({
             if (connectionRef.current) {
                 connectionRef.current.close();
             }
+            if (ringTimeoutRef.current) {
+                clearTimeout(ringTimeoutRef.current);
+            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [callConfig?.active]);
@@ -244,6 +320,8 @@ const CallOverlay = ({
         socket.on('call_accepted', async (signal) => {
             setCallAccepted(true);
             callAcceptedRef.current = true;
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            
             if (connectionRef.current) {
                 await connectionRef.current.setRemoteDescription(new RTCSessionDescription(signal));
             }
@@ -264,7 +342,7 @@ const CallOverlay = ({
         });
 
         socket.on('call_rejected', () => {
-            alert('Call rejected by the user');
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
             handleEndCall(false);
         });
 
@@ -457,21 +535,22 @@ const CallOverlay = ({
 
     return (
         <OverlayContainer>
+            <BackgroundBlur style={{ backgroundImage: `url(${callerAvatar})` }} />
             {!callAccepted ? (
                 <CallerInfo>
                     <CallingAnimation>
                         <Avatar src={callerAvatar} alt="Caller Avatar" onError={handleImageError} />
                     </CallingAnimation>
-                    <h2>{callConfig.isReceiving ? `${callerName} is calling...` : `Calling ${callerName}...`}</h2>
-                    <p style={{ color: '#94A3B8' }}>{callConfig.callType === 'video' ? 'Video Call' : 'Voice Call'}</p>
+                    <CallerNameText>{callConfig.isReceiving ? `${callerName} is calling...` : `Calling ${callerName}...`}</CallerNameText>
+                    <CallStatusText>{callConfig.callType === 'video' ? 'Video Call' : 'Voice Call'}</CallStatusText>
                     
                     {callConfig.isReceiving && (
-                        <div style={{ display: 'flex', gap: '20px', marginTop: '30px' }}>
+                        <div style={{ display: 'flex', gap: '30px', marginTop: '40px' }}>
                             <ControlButton color="danger" onClick={() => handleEndCall(true)}>
-                                <PhoneOff size={24} />
+                                <PhoneOff size={28} />
                             </ControlButton>
                             <ControlButton color="success" pulsing={true} onClick={answerCall}>
-                                <Phone size={24} />
+                                <Phone size={28} />
                             </ControlButton>
                         </div>
                     )}
@@ -479,10 +558,10 @@ const CallOverlay = ({
             ) : callConfig.callType === 'audio' ? (
                 <CallerInfo>
                     <CallingAnimation>
-                        <Avatar src={callerAvatar} alt="Caller Avatar" onError={handleImageError} style={{ border: '4px solid var(--colors-primary)' }} />
+                        <Avatar src={callerAvatar} alt="Caller Avatar" onError={handleImageError} style={{ border: '4px solid #10B981' }} />
                     </CallingAnimation>
-                    <h2>{callerName}</h2>
-                    <p style={{ color: '#10B981' }}>00:00 - Connected</p>
+                    <CallerNameText>{callerName}</CallerNameText>
+                    <CallStatusText style={{ color: '#10B981', textShadow: '0 0 10px rgba(16, 185, 129, 0.3)' }}>Connected</CallStatusText>
                     {/* Keep the invisible video elements so WebRTC still works */}
                     <VideoElement playsInline muted ref={myVideo} autoPlay style={{ display: 'none' }} />
                     <VideoElement playsInline ref={remoteVideo} autoPlay style={{ display: 'none' }} />
