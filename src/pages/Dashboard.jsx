@@ -253,6 +253,115 @@ const IconButton = styled('button', {
     }
 });
 
+const SelectionCheck = styled('button', {
+    width: '24px',
+    height: '24px',
+    minWidth: '24px',
+    minHeight: '24px',
+    padding: 0,
+    borderRadius: '$round',
+    border: '2px solid #8696a0',
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    cursor: 'pointer',
+    transition: 'background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease',
+    '&:hover': {
+        borderColor: '#00a884',
+        transform: 'scale(1.06)',
+    },
+    '&:focus-visible': {
+        outline: '2px solid #00a884',
+        outlineOffset: '2px',
+    },
+    variants: {
+        selected: {
+            true: {
+                backgroundColor: '#00a884',
+                borderColor: '#00a884',
+            },
+        },
+    },
+});
+
+const SelectionToolbar = styled('div', {
+    padding: '12px 24px',
+    minHeight: '64px',
+    backgroundColor: 'var(--colors-surface)',
+    borderTop: '1px solid var(--colors-border)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexShrink: 0,
+    '@media (max-width: 480px)': {
+        padding: '10px 16px',
+    },
+});
+
+const SelectionToolbarCount = styled('span', {
+    color: 'var(--colors-textMain)',
+    fontSize: '1.05rem',
+    fontWeight: '500',
+    whiteSpace: 'nowrap',
+});
+
+const SelectionToolbarActions = styled('div', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '24px',
+});
+
+const SelectionActionButton = styled('button', {
+    minHeight: '40px',
+    minWidth: 'unset',
+    padding: '0 17px',
+    borderRadius: '999px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    fontFamily: 'inherit',
+    fontSize: '0.9rem',
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    transition: 'background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease',
+    '&:active': { transform: 'scale(0.97)' },
+    '&:focus-visible': { outline: '2px solid #00a884', outlineOffset: '2px' },
+    '&:disabled': { opacity: 0.45, cursor: 'not-allowed' },
+    variants: {
+        intent: {
+            cancel: {
+                backgroundColor: 'transparent',
+                border: '1px solid #52616a',
+                color: '#d1d7db',
+                '&:hover:not(:disabled)': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    borderColor: '#8696a0',
+                },
+            },
+            danger: {
+                backgroundColor: '#d9534f',
+                border: '1px solid #d9534f',
+                color: '#fff',
+                boxShadow: '0 2px 8px rgba(217, 83, 79, 0.18)',
+                '&:hover:not(:disabled)': {
+                    backgroundColor: '#c74743',
+                    borderColor: '#c74743',
+                },
+            },
+        },
+    },
+    '@media (max-width: 480px)': {
+        minHeight: '40px',
+        padding: '0 13px',
+        fontSize: '0.85rem',
+    },
+});
+
 const MobileOnlyText = styled('span', {
     display: 'none',
     '@media (max-width: 768px)': {
@@ -387,6 +496,7 @@ const ChatBubbleWrapper = styled('div', {
 
 const ChatBubble = styled('div', {
     maxWidth: '65%',
+    minWidth: '90px',
     padding: '8px 12px 10px 12px',
     borderRadius: '12px',
     position: 'relative',
@@ -470,18 +580,6 @@ const ContextMenuContainer = styled('div', {
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
-    '@media (max-width: 768px)': {
-        position: 'fixed !important',
-        bottom: '0 !important',
-        top: 'auto !important',
-        left: '0 !important',
-        right: '0 !important',
-        width: '100vw !important',
-        borderBottomLeftRadius: '0 !important',
-        borderBottomRightRadius: '0 !important',
-        padding: '16px 8px env(safe-area-inset-bottom, 16px) !important',
-        transform: 'none !important',
-    }
 });
 
 const ContextMenuItem = styled('div', {
@@ -1296,10 +1394,12 @@ export default function Dashboard() {
     const [toastMessage, setToastMessage] = useState(null);
     const [isSelectingMessages, setIsSelectingMessages] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState([]);
+    const [messageSelectionConversationId, setMessageSelectionConversationId] = useState(null);
     const [selectedChats, setSelectedChats] = useState([]);
     const [isChatsSelectionMode, setIsChatsSelectionMode] = useState(false);
     const [selectedCallLogs, setSelectedCallLogs] = useState([]);
     const [isCallLogsSelectionMode, setIsCallLogsSelectionMode] = useState(false);
+    const [deleteMessagePrompt, setDeleteMessagePrompt] = useState({ visible: false, messageIds: [] });
 
     useEffect(() => {
         if (toastMessage) {
@@ -1309,6 +1409,59 @@ export default function Dashboard() {
     }, [toastMessage]);
 
     const showToast = (msg) => setToastMessage(msg);
+
+    const toggleSelection = (setSelectedItems, itemId) => {
+        setSelectedItems(previous => previous.includes(itemId)
+            ? previous.filter(id => id !== itemId)
+            : [...previous, itemId]);
+    };
+
+    const selectMessage = (messageId) => {
+        setIsSelectingMessages(true);
+        setMessageSelectionConversationId(activeConversationId);
+        setSelectedMessages(previous => messageSelectionConversationId === activeConversationId
+            ? (previous.includes(messageId) ? previous : [...previous, messageId])
+            : [messageId]);
+    };
+    const toggleMessageSelection = (messageId) => {
+        if (messageSelectionConversationId !== activeConversationId) {
+            selectMessage(messageId);
+            return;
+        }
+        toggleSelection(setSelectedMessages, messageId);
+    };
+
+    const selectChat = (conversationId) => {
+        setIsChatsSelectionMode(true);
+        setSelectedChats(previous => previous.includes(conversationId) ? previous : [...previous, conversationId]);
+    };
+    const toggleChatSelection = (conversationId) => toggleSelection(setSelectedChats, conversationId);
+
+    const selectCallLog = (callLogId) => {
+        setIsCallLogsSelectionMode(true);
+        setSelectedCallLogs(previous => previous.includes(callLogId) ? previous : [...previous, callLogId]);
+    };
+    const toggleCallLogSelection = (callLogId) => toggleSelection(setSelectedCallLogs, callLogId);
+
+    const consumeSuppressedSelectionClick = () => {
+        if (!suppressNextSelectionClick.current) return false;
+        suppressNextSelectionClick.current = false;
+        return true;
+    };
+
+    const cancelMessageSelection = () => {
+        setIsSelectingMessages(false);
+        setSelectedMessages([]);
+        setMessageSelectionConversationId(null);
+    };
+    const cancelChatSelection = () => {
+        setIsChatsSelectionMode(false);
+        setSelectedChats([]);
+    };
+    const cancelCallLogSelection = () => {
+        setIsCallLogsSelectionMode(false);
+        setSelectedCallLogs([]);
+    };
 
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(() => {
         return sessionStorage.getItem('isWhiteboardOpen') === 'true';
@@ -1461,6 +1614,7 @@ export default function Dashboard() {
     const lastScrollTopRef = useRef(0);
     const touchHoldTimer = useRef(null);
     const touchStartCoords = useRef({ x: 0, y: 0 });
+    const suppressNextSelectionClick = useRef(false);
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
     const handleMessageListScroll = () => {
@@ -1643,8 +1797,12 @@ export default function Dashboard() {
                     }));
                 });
 
-                newSocket.on('message_deleted', (deletedMsgId) => {
-                    setMessages(prev => prev.filter(msg => msg._id !== deletedMsgId));
+                newSocket.on('messages_deleted_for_everyone', (deletedMsgIds) => {
+                    setMessages(prev => prev.filter(msg => !deletedMsgIds.includes(msg._id)));
+                });
+
+                newSocket.on('messages_deleted_for_me', (deletedMsgIds) => {
+                    setMessages(prev => prev.filter(msg => !deletedMsgIds.includes(msg._id)));
                 });
 
                 newSocket.on('conversation_deleted', (deletedConvId) => {
@@ -1926,9 +2084,23 @@ export default function Dashboard() {
         touchStartCoords.current = { x: pageX, y: pageY };
 
         touchHoldTimer.current = setTimeout(() => {
-            handleContextMenu({ preventDefault: () => { }, pageX, pageY }, 'message', msg);
+            suppressNextSelectionClick.current = true;
+            setTimeout(() => { suppressNextSelectionClick.current = false; }, 700);
+            selectMessage(msg._id || msg.createdAt);
             touchHoldTimer.current = null;
-        }, 500); // 500ms long press for context menu
+        }, 500);
+    };
+
+    const handleSelectableTouchStart = (e, type, item) => {
+        const touch = e.touches[0];
+        touchStartCoords.current = { x: touch.pageX, y: touch.pageY };
+        touchHoldTimer.current = setTimeout(() => {
+            suppressNextSelectionClick.current = true;
+            setTimeout(() => { suppressNextSelectionClick.current = false; }, 700);
+            if (type === 'chat') selectChat(item._id);
+            else selectCallLog(item.id);
+            touchHoldTimer.current = null;
+        }, 500);
     };
 
     const handleTouchMove = (e) => {
@@ -1972,25 +2144,98 @@ export default function Dashboard() {
         setEditInputContent('');
     };
 
-    const deleteMessage = (msgId) => {
-        if (!socket || !activeConversationId) return;
-        socket.emit('delete_message', {
-            messageId: msgId,
-            conversationId: activeConversationId
+    const confirmDeleteForMe = () => {
+        if (!socket || !activeConversationId || !deleteMessagePrompt.messageIds.length) return;
+        socket.emit('delete_message_for_me', { 
+            messageIds: deleteMessagePrompt.messageIds, 
+            conversationId: activeConversationId,
+            userId: mongoUserId
         });
+        setMessages(prev => prev.filter(msg => !deleteMessagePrompt.messageIds.includes(msg._id)));
+        setDeleteMessagePrompt({ visible: false, messageIds: [] });
+        cancelMessageSelection();
+    };
+
+    const confirmDeleteForEveryone = () => {
+        if (!socket || !activeConversationId || !deleteMessagePrompt.messageIds.length) return;
+        socket.emit('delete_message_for_everyone', { 
+            messageIds: deleteMessagePrompt.messageIds, 
+            conversationId: activeConversationId 
+        });
+        setDeleteMessagePrompt({ visible: false, messageIds: [] });
+        cancelMessageSelection();
+    };
+
+    const deleteMessage = (msgId) => {
+        setDeleteMessagePrompt({ visible: true, messageIds: [msgId] });
+    };
+
+    const deleteSelectedMessages = () => {
+        const selected = messages.filter(message => selectedMessages.includes(message._id || message.createdAt));
+        const deletable = selected.filter(message => message._id);
+        if (!deletable.length) {
+            showToast('Selected messages could not be deleted');
+            return;
+        }
+        setDeleteMessagePrompt({ visible: true, messageIds: deletable.map(m => m._id) });
+    };
+
+    const deleteSelectedChats = () => {
+        if (!socket) return;
+        const selected = conversations.filter(conversation => selectedChats.includes(conversation._id));
+        selected.forEach(conversation => {
+            if (conversation.type === 'group') {
+                socket.emit('leave_conversation', { conversationId: conversation._id, userId: mongoUserId });
+            } else {
+                socket.emit('delete_conversation', { conversationId: conversation._id, userId: mongoUserId });
+            }
+        });
+        cancelChatSelection();
+        showToast(`Removed ${selected.length} selected chat${selected.length === 1 ? '' : 's'}`);
+    };
+
+    const deleteSelectedCallLogs = async () => {
+        if (!selectedCallLogs.length) return;
+        const results = await Promise.allSettled(selectedCallLogs.map(async (logId) => {
+            const token = await getAccessTokenSilently();
+            const response = await fetch(`${BACKEND_URL}/api/calls/${logId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`Call log deletion failed (${response.status})`);
+            return logId;
+        }));
+        const deletedIds = results
+            .filter(result => result.status === 'fulfilled')
+            .map(result => result.value);
+        const failedCount = results.length - deletedIds.length;
+        if (deletedIds.length) {
+            setCallLogs(previous => previous.filter(log => !deletedIds.includes(log.id)));
+        }
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                console.error(`Error deleting call log ${selectedCallLogs[index]}:`, result.reason);
+            }
+        });
+        cancelCallLogSelection();
+        showToast(failedCount
+            ? `Deleted ${deletedIds.length}; ${failedCount} call log${failedCount === 1 ? '' : 's'} could not be deleted`
+            : `Deleted ${deletedIds.length} call log${deletedIds.length === 1 ? '' : 's'}`);
     };
 
     const deleteCallLog = async (logId) => {
         try {
             const token = await getAccessTokenSilently();
-            await fetch(`${BACKEND_URL}/api/calls/${logId}`, {
+            const response = await fetch(`${BACKEND_URL}/api/calls/${logId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });
+            if (!response.ok) throw new Error(`Call log deletion failed (${response.status})`);
             setCallLogs(prev => prev.filter(log => log.id !== logId));
             setContextMenu({ ...contextMenu, visible: false });
         } catch (error) {
             console.error('Error deleting call log:', error);
+            showToast('Could not delete call log');
         }
     };
 
@@ -2248,6 +2493,7 @@ export default function Dashboard() {
     };
 
     const activeConversation = conversations.find(c => c._id === activeConversationId);
+    const isSelectingCurrentMessages = isSelectingMessages && messageSelectionConversationId === activeConversationId;
     const showChatArea = !!activeConversationId || (activeTab === 'settings' && !!activeSettingTab);
 
     const isImageUrl = (url) => typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null || url.startsWith('data:image/'));
@@ -2256,6 +2502,9 @@ export default function Dashboard() {
 
     const handleTabChange = (tab) => {
         if (activeTab === tab) return;
+        cancelMessageSelection();
+        cancelChatSelection();
+        cancelCallLogSelection();
         setActiveTab(tab);
         if (tab === 'communities' || tab === 'status' || tab === 'calls' || tab === 'settings') {
             setActiveConversationId(null);
@@ -2270,10 +2519,20 @@ export default function Dashboard() {
         }
         if (tab === 'settings') {
             const hasVisited = localStorage.getItem('devsup_visited_settings');
-            if (hasVisited && !activeSettingTab) {
-                setActiveSettingTab('Profile');
-            } else if (!hasVisited) {
-                localStorage.setItem('devsup_visited_settings', 'true');
+            // On mobile, always show the settings list first (not the profile panel)
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) {
+                if (hasVisited && !activeSettingTab) {
+                    setActiveSettingTab('Profile');
+                } else if (!hasVisited) {
+                    localStorage.setItem('devsup_visited_settings', 'true');
+                }
+            } else {
+                // On mobile, reset to null so the sidebar (settings list) shows first
+                setActiveSettingTab(null);
+                if (!hasVisited) {
+                    localStorage.setItem('devsup_visited_settings', 'true');
+                }
             }
         }
     };
@@ -2346,9 +2605,24 @@ export default function Dashboard() {
                         <div style={{ padding: '16px 20px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
                                 <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
-                                    <MobileOnlyText>DevSup</MobileOnlyText>
-                                    <DesktopOnlyText>Recent Calls</DesktopOnlyText>
+                                    {isCallLogsSelectionMode
+                                        ? `${selectedCallLogs.length} selected`
+                                        : <><MobileOnlyText>DevSup</MobileOnlyText><DesktopOnlyText>Recent Calls</DesktopOnlyText></>}
                                 </h2>
+                                {isCallLogsSelectionMode ? (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <IconButton title="Delete selected call logs" onClick={deleteSelectedCallLogs} disabled={!selectedCallLogs.length} style={{ color: '#ff6b6b', backgroundColor: '#2a3942', width: '40px', height: '40px', opacity: selectedCallLogs.length ? 1 : 0.45 }}>
+                                            <Trash2 size={20} />
+                                        </IconButton>
+                                        <IconButton title="Cancel selection" onClick={cancelCallLogSelection} style={{ color: '#d1d7db', backgroundColor: '#2a3942', width: '40px', height: '40px' }}>
+                                            <X size={20} />
+                                        </IconButton>
+                                    </div>
+                                ) : (
+                                    <IconButton title="Select call logs" onClick={() => setIsCallLogsSelectionMode(true)} style={{ color: '#d1d7db', backgroundColor: '#2a3942', width: '40px', height: '40px' }}>
+                                        <CheckSquare size={20} />
+                                    </IconButton>
+                                )}
                             </div>
                         </div>
                         {callLogs.length === 0 ? (
@@ -2362,9 +2636,37 @@ export default function Dashboard() {
                                 {callLogs.map(log => (
                                     <ChannelItem
                                         key={log.id}
-                                        style={{ height: 'auto', padding: '12px 16px', gap: '16px' }}
+                                        active={selectedCallLogs.includes(log.id)}
+                                        style={{
+                                            height: 'auto',
+                                            padding: '12px 16px',
+                                            gap: '16px',
+                                            backgroundColor: selectedCallLogs.includes(log.id) ? 'rgba(0, 168, 132, 0.16)' : undefined
+                                        }}
+                                        onClick={() => {
+                                            if (consumeSuppressedSelectionClick()) return;
+                                            if (isCallLogsSelectionMode) toggleCallLogSelection(log.id);
+                                        }}
+                                        onTouchStart={(e) => handleSelectableTouchStart(e, 'callLog', log)}
+                                        onTouchMove={handleTouchMove}
+                                        onTouchEnd={handleTouchEnd}
+                                        onTouchCancel={handleTouchEnd}
                                         onContextMenu={(e) => handleContextMenu(e, 'callLog', log)}
                                     >
+                                        {isCallLogsSelectionMode && (
+                                            <SelectionCheck
+                                                type="button"
+                                                selected={selectedCallLogs.includes(log.id)}
+                                                aria-label={selectedCallLogs.includes(log.id) ? 'Deselect call log' : 'Select call log'}
+                                                aria-pressed={selectedCallLogs.includes(log.id)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleCallLogSelection(log.id);
+                                                }}
+                                            >
+                                                {selectedCallLogs.includes(log.id) && <Check size={14} strokeWidth={3} />}
+                                            </SelectionCheck>
+                                        )}
                                         <AvatarWrapper style={{ flexShrink: 0 }}>
                                             <Avatar
                                                 src={log.contactAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(log.contactName)}&background=06B6D4&color=fff`}
@@ -2385,7 +2687,7 @@ export default function Dashboard() {
                                                 <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</span>
                                             </div>
                                         </div>
-                                        <IconButton
+                                        {!isCallLogsSelectionMode && <IconButton
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 openConversationWith(log.contactId, log.type === 'video' ? 'video' : 'audio');
@@ -2394,7 +2696,7 @@ export default function Dashboard() {
                                             title={log.type === 'video' ? 'Start video call' : 'Start voice call'}
                                         >
                                             {log.type === 'video' ? <Video size={20} /> : <Phone size={20} />}
-                                        </IconButton>
+                                        </IconButton>}
                                     </ChannelItem>
                                 ))}
                             </div>
@@ -2407,10 +2709,20 @@ export default function Dashboard() {
                         <div style={{ padding: '16px 20px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
                                 <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
-                                    <MobileOnlyText>DevSup</MobileOnlyText>
-                                    <DesktopOnlyText>Chats</DesktopOnlyText>
+                                    {isChatsSelectionMode
+                                        ? `${selectedChats.length} selected`
+                                        : <><MobileOnlyText>DevSup</MobileOnlyText><DesktopOnlyText>Chats</DesktopOnlyText></>}
                                 </h2>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                                {isChatsSelectionMode ? (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <IconButton title="Delete selected chats" onClick={deleteSelectedChats} disabled={!selectedChats.length} style={{ color: '#ff6b6b', backgroundColor: '#2a3942', width: '40px', height: '40px', opacity: selectedChats.length ? 1 : 0.45 }}>
+                                            <Trash2 size={20} />
+                                        </IconButton>
+                                        <IconButton title="Cancel selection" onClick={cancelChatSelection} style={{ color: '#d1d7db', backgroundColor: '#2a3942', width: '40px', height: '40px' }}>
+                                            <X size={20} />
+                                        </IconButton>
+                                    </div>
+                                ) : <div style={{ display: 'flex', gap: '8px' }}>
                                     <IconButton title="New Chat" onClick={openCreateModal} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
                                         <Plus size={20} />
                                     </IconButton>
@@ -2429,6 +2741,10 @@ export default function Dashboard() {
                                                         <Users size={18} style={{ opacity: 0.8 }} />
                                                         New group
                                                     </ContextMenuItem>
+                                                    <ContextMenuItem onClick={() => { setIsChatsSelectionMode(true); setSelectedChats([]); setIsChatsMenuOpen(false); }}>
+                                                        <CheckSquare size={18} style={{ opacity: 0.8 }} />
+                                                        Select chats
+                                                    </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { handleTabChange('settings'); setIsChatsMenuOpen(false); }}>
                                                         <Settings size={18} style={{ opacity: 0.8 }} />
                                                         Settings
@@ -2441,7 +2757,7 @@ export default function Dashboard() {
                                             </>
                                         )}
                                     </div>
-                                </div>
+                                </div>}
                             </div>
                             <div style={{ 
                                 display: 'flex', 
@@ -2499,9 +2815,29 @@ export default function Dashboard() {
                                 return (
                                     <ChannelItem
                                         key={conv._id}
-                                        active={activeConversationId === conv._id}
-                                        onClick={() => setActiveConversationId(conv._id)}
-                                        style={{ padding: '12px 20px', borderRadius: 0, gap: '16px', alignItems: 'center', margin: 0, borderBottom: 'none' }}
+                                        active={activeConversationId === conv._id || selectedChats.includes(conv._id)}
+                                        onClick={() => {
+                                            if (consumeSuppressedSelectionClick()) return;
+                                            if (isChatsSelectionMode) toggleChatSelection(conv._id);
+                                            else setActiveConversationId(conv._id);
+                                        }}
+                                        onTouchStart={(e) => handleSelectableTouchStart(e, 'chat', conv)}
+                                        onTouchMove={handleTouchMove}
+                                        onTouchEnd={handleTouchEnd}
+                                        onTouchCancel={handleTouchEnd}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            setContextMenu({ visible: true, x: e.pageX, y: e.pageY, message: null, callLog: null, conversation: conv });
+                                        }}
+                                        style={{
+                                            padding: '12px 20px',
+                                            borderRadius: 0,
+                                            gap: '16px',
+                                            alignItems: 'center',
+                                            margin: 0,
+                                            borderBottom: 'none',
+                                            backgroundColor: selectedChats.includes(conv._id) ? 'rgba(0, 168, 132, 0.16)' : undefined
+                                        }}
                                         onMouseEnter={(e) => {
                                             const btn = e.currentTarget.querySelector('.conv-delete-btn');
                                             if (btn) btn.style.opacity = 1;
@@ -2511,9 +2847,28 @@ export default function Dashboard() {
                                             if (btn) btn.style.opacity = 0;
                                         }}
                                     >
+                                        {isChatsSelectionMode && (
+                                            <SelectionCheck
+                                                type="button"
+                                                selected={selectedChats.includes(conv._id)}
+                                                aria-label={selectedChats.includes(conv._id) ? 'Deselect chat' : 'Select chat'}
+                                                aria-pressed={selectedChats.includes(conv._id)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleChatSelection(conv._id);
+                                                }}
+                                            >
+                                                {selectedChats.includes(conv._id) && <Check size={14} strokeWidth={3} />}
+                                            </SelectionCheck>
+                                        )}
                                         <AvatarWrapper 
                                             style={{ flexShrink: 0, padding: showStatusRing ? '2px' : '0', border: showStatusRing ? '2px solid var(--colors-accent)' : 'none', cursor: showStatusRing ? 'pointer' : 'default', width: showStatusRing ? '56px' : '48px', height: showStatusRing ? '56px' : '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}
                                             onClick={(e) => {
+                                                if (isChatsSelectionMode) {
+                                                    e.stopPropagation();
+                                                    toggleChatSelection(conv._id);
+                                                    return;
+                                                }
                                                 if (showStatusRing) {
                                                     e.stopPropagation();
                                                     setStoryViewerInitialUserIndex(userStatusIndex);
@@ -2553,7 +2908,7 @@ export default function Dashboard() {
                                                             {conv.unreadCount}
                                                         </div>
                                                     )}
-                                                    <IconButton
+                                                    {!isChatsSelectionMode && <IconButton
                                                         className="conv-delete-btn"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -2563,7 +2918,7 @@ export default function Dashboard() {
                                                         style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
                                                     >
                                                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                                    </IconButton>
+                                                    </IconButton>}
                                                 </div>
                                             </div>
                                         </div>
@@ -2579,10 +2934,20 @@ export default function Dashboard() {
                         <div style={{ padding: '16px 20px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
                                 <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '700', color: 'var(--colors-textMain)' }}>
-                                    <MobileOnlyText>DevSup</MobileOnlyText>
-                                    <DesktopOnlyText>Communities</DesktopOnlyText>
+                                    {isChatsSelectionMode
+                                        ? `${selectedChats.length} selected`
+                                        : <><MobileOnlyText>DevSup</MobileOnlyText><DesktopOnlyText>Communities</DesktopOnlyText></>}
                                 </h2>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                                {isChatsSelectionMode ? (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <IconButton title="Leave selected communities" onClick={deleteSelectedChats} disabled={!selectedChats.length} style={{ color: '#ff6b6b', backgroundColor: '#2a3942', width: '40px', height: '40px', opacity: selectedChats.length ? 1 : 0.45 }}>
+                                            <Trash2 size={20} />
+                                        </IconButton>
+                                        <IconButton title="Cancel selection" onClick={cancelChatSelection} style={{ color: '#d1d7db', backgroundColor: '#2a3942', width: '40px', height: '40px' }}>
+                                            <X size={20} />
+                                        </IconButton>
+                                    </div>
+                                ) : <div style={{ display: 'flex', gap: '8px' }}>
                                     <IconButton title="New Community" onClick={() => { setConvType('group'); setIsModalOpen(true); }} style={{ backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}>
                                         <Plus size={20} />
                                     </IconButton>
@@ -2597,6 +2962,10 @@ export default function Dashboard() {
                                                     onClick={() => setIsChatsMenuOpen(false)}
                                                 />
                                                 <ContextMenuContainer style={{ top: '100%', right: 0, marginTop: '12px', zIndex: 2000 }}>
+                                                    <ContextMenuItem onClick={() => { setIsChatsSelectionMode(true); setSelectedChats([]); setIsChatsMenuOpen(false); }}>
+                                                        <CheckSquare size={18} style={{ opacity: 0.8 }} />
+                                                        Select communities
+                                                    </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { handleTabChange('settings'); setIsChatsMenuOpen(false); }}>
                                                         <Settings size={18} style={{ opacity: 0.8 }} />
                                                         Settings
@@ -2609,7 +2978,7 @@ export default function Dashboard() {
                                             </>
                                         )}
                                     </div>
-                                </div>
+                                </div>}
                             </div>
                             <div style={{ 
                                 display: 'flex', 
@@ -2652,9 +3021,29 @@ export default function Dashboard() {
                             }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(conv => (
                                 <ChannelItem
                                     key={conv._id}
-                                    active={activeConversationId === conv._id}
-                                    onClick={() => { setActiveConversationId(conv._id); setCommunityTab('chat'); }}
-                                    style={{ padding: '12px 20px', borderRadius: 0, gap: '16px', alignItems: 'center', margin: 0, borderBottom: 'none' }}
+                                    active={activeConversationId === conv._id || selectedChats.includes(conv._id)}
+                                    onClick={() => {
+                                        if (consumeSuppressedSelectionClick()) return;
+                                        if (isChatsSelectionMode) toggleChatSelection(conv._id);
+                                        else { setActiveConversationId(conv._id); setCommunityTab('chat'); }
+                                    }}
+                                    onTouchStart={(e) => handleSelectableTouchStart(e, 'chat', conv)}
+                                    onTouchMove={handleTouchMove}
+                                    onTouchEnd={handleTouchEnd}
+                                    onTouchCancel={handleTouchEnd}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        setContextMenu({ visible: true, x: e.pageX, y: e.pageY, message: null, callLog: null, conversation: conv });
+                                    }}
+                                    style={{
+                                        padding: '12px 20px',
+                                        borderRadius: 0,
+                                        gap: '16px',
+                                        alignItems: 'center',
+                                        margin: 0,
+                                        borderBottom: 'none',
+                                        backgroundColor: selectedChats.includes(conv._id) ? 'rgba(0, 168, 132, 0.16)' : undefined
+                                    }}
                                     onMouseEnter={(e) => {
                                         const btn = e.currentTarget.querySelector('.conv-delete-btn');
                                         if (btn) btn.style.opacity = 1;
@@ -2664,6 +3053,20 @@ export default function Dashboard() {
                                         if (btn) btn.style.opacity = 0;
                                     }}
                                 >
+                                    {isChatsSelectionMode && (
+                                        <SelectionCheck
+                                            type="button"
+                                            selected={selectedChats.includes(conv._id)}
+                                            aria-label={selectedChats.includes(conv._id) ? 'Deselect community' : 'Select community'}
+                                            aria-pressed={selectedChats.includes(conv._id)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleChatSelection(conv._id);
+                                            }}
+                                        >
+                                            {selectedChats.includes(conv._id) && <Check size={14} strokeWidth={3} />}
+                                        </SelectionCheck>
+                                    )}
                                     <AvatarWrapper style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <Avatar
                                             src={conv.avatarUrl || `https://ui-avatars.com/api/?name=${conv.name}&background=06B6D4&color=fff`}
@@ -2695,7 +3098,7 @@ export default function Dashboard() {
                                                         {conv.unreadCount}
                                                     </div>
                                                 )}
-                                                <IconButton
+                                                {!isChatsSelectionMode && <IconButton
                                                     className="conv-delete-btn"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -2705,7 +3108,7 @@ export default function Dashboard() {
                                                     style={{ padding: '2px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--colors-textMuted)', zIndex: 2 }}
                                                 >
                                                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                                </IconButton>
+                                                </IconButton>}
                                             </div>
                                         </div>
                                     </div>
@@ -3128,12 +3531,19 @@ export default function Dashboard() {
                                                         Hackathon
                                                     </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { 
-                                                        setIsSelectingMessages(!isSelectingMessages); 
-                                                        showToast(isSelectingMessages ? 'Selection mode disabled' : 'Select messages to forward or delete');
+                                                        if (isSelectingCurrentMessages) {
+                                                            cancelMessageSelection();
+                                                            showToast('Selection mode disabled');
+                                                        } else {
+                                                            setIsSelectingMessages(true);
+                                                            setSelectedMessages([]);
+                                                            setMessageSelectionConversationId(activeConversationId);
+                                                            showToast('Select messages to delete');
+                                                        }
                                                         setIsHeaderMenuOpen(false); 
                                                     }}>
-                                                        {isSelectingMessages ? <XCircle size={18} style={{ opacity: 0.8 }} /> : <CheckSquare size={18} style={{ opacity: 0.8 }} />}
-                                                        {isSelectingMessages ? 'Cancel selection' : 'Select messages'}
+                                                        {isSelectingCurrentMessages ? <XCircle size={18} style={{ opacity: 0.8 }} /> : <CheckSquare size={18} style={{ opacity: 0.8 }} />}
+                                                        {isSelectingCurrentMessages ? 'Cancel selection' : 'Select messages'}
                                                     </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => { setActiveConversationId(null); setIsHeaderMenuOpen(false); }}>
                                                         <X size={18} style={{ opacity: 0.8 }} />
@@ -3282,15 +3692,15 @@ export default function Dashboard() {
                                                             width: '100%',
                                                             padding: '4px 8px',
                                                             borderRadius: '8px',
-                                                            backgroundColor: (contextMenu.visible && contextMenu.message?._id === (msg._id || msg.createdAt)) ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                                                            backgroundColor: selectedMessages.includes(msg._id || msg.createdAt)
+                                                                ? 'rgba(0, 168, 132, 0.16)'
+                                                                : ((contextMenu.visible && contextMenu.message?._id === (msg._id || msg.createdAt)) ? 'rgba(6, 182, 212, 0.2)' : 'transparent'),
                                                             transition: 'background-color 0.2s ease',
-                                                        }}>
-                                                            {isSelectingMessages && (
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    style={{ width: '20px', height: '20px', accentColor: 'var(--colors-accent)', cursor: 'pointer', flexShrink: 0 }} 
-                                                                />
-                                                            )}
+                                                        }}
+                                                        onClick={() => {
+                                                            if (isSelectingCurrentMessages) toggleMessageSelection(msg._id || msg.createdAt);
+                                                        }}
+                                                        >
                                                             <ChatBubbleWrapper
                                                                 as={motion.div}
                                                                 drag="x"
@@ -3303,8 +3713,22 @@ export default function Dashboard() {
                                                                     }
                                                                 }}
                                                                 isOwn={isOwnMessage}
-                                                                style={{ flex: 1, maxWidth: isSelectingMessages ? 'calc(100% - 32px)' : '100%', alignItems: isOwnMessage ? 'flex-end' : 'flex-start' }}
+                                                                style={{ flex: 1, maxWidth: '100%', alignItems: isOwnMessage ? 'flex-end' : 'flex-start', gap: isSelectingCurrentMessages ? '10px' : undefined }}
                                                             >
+                                                                {isSelectingCurrentMessages && (
+                                                                    <SelectionCheck
+                                                                        type="button"
+                                                                        selected={selectedMessages.includes(msg._id || msg.createdAt)}
+                                                                        aria-label={selectedMessages.includes(msg._id || msg.createdAt) ? 'Deselect message' : 'Select message'}
+                                                                        aria-pressed={selectedMessages.includes(msg._id || msg.createdAt)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            toggleMessageSelection(msg._id || msg.createdAt);
+                                                                        }}
+                                                                    >
+                                                                        {selectedMessages.includes(msg._id || msg.createdAt) && <Check size={14} strokeWidth={3} />}
+                                                                    </SelectionCheck>
+                                                                )}
                                                                 <ChatBubble
                                                                 isOwn={isOwnMessage}
                                                                 mediaOnly={isMediaMessage}
@@ -3520,14 +3944,25 @@ export default function Dashboard() {
 
                                     </MessageList>
 
-                                    {isSelectingMessages ? (
-                                        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--colors-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--colors-surface)', flexShrink: 0 }}>
-                                            <span style={{ color: 'var(--colors-textMain)', fontWeight: '600' }}>Selection Mode Active</span>
-                                            <div style={{ display: 'flex', gap: '12px' }}>
-                                                <Button variant="outline" onClick={() => setIsSelectingMessages(false)} style={{ padding: '8px 16px', borderRadius: '8px' }}>Cancel</Button>
-                                                <Button variant="primary" style={{ backgroundColor: '#ef4444', border: 'none', padding: '8px 16px', borderRadius: '8px', color: '#fff' }} onClick={() => { setMessages([]); setIsSelectingMessages(false); showToast('Selected messages deleted'); }}>Delete Selected</Button>
+                                    {isSelectingCurrentMessages ? (
+                                        <SelectionToolbar>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                                                <IconButton type="button" onClick={cancelMessageSelection} title="Cancel">
+                                                    <X size={24} />
+                                                </IconButton>
+                                                <SelectionToolbarCount>{selectedMessages.length} selected</SelectionToolbarCount>
                                             </div>
-                                        </div>
+                                            <SelectionToolbarActions>
+                                                <IconButton 
+                                                    type="button" 
+                                                    onClick={deleteSelectedMessages} 
+                                                    disabled={!selectedMessages.length}
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={24} />
+                                                </IconButton>
+                                            </SelectionToolbarActions>
+                                        </SelectionToolbar>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, backgroundColor: 'var(--colors-surface)', borderTop: '1px solid var(--colors-border)' }}>
                                             {replyingToMessage && (
@@ -4611,6 +5046,13 @@ export default function Dashboard() {
                     <ContextMenuContainer style={{ top: contextMenu.y, left: contextMenu.x, zIndex: 2000, position: 'fixed' }}>
                     {contextMenu.conversation && (
                         <>
+                            <ContextMenuItem onClick={() => {
+                                selectChat(contextMenu.conversation._id);
+                                setContextMenu({ ...contextMenu, visible: false });
+                            }}>
+                                <CheckSquare size={16} />
+                                Select {contextMenu.conversation.type === 'group' ? 'community' : 'chat'}
+                            </ContextMenuItem>
                             <ContextMenuItem onClick={(e) => { 
                                 setContextMenu({ ...contextMenu, visible: false }); 
                                 if (contextMenu.conversation.type === 'group') {
@@ -4634,6 +5076,13 @@ export default function Dashboard() {
                     )}
                     {contextMenu.message && (
                         <>
+                            <ContextMenuItem onClick={() => {
+                                selectMessage(contextMenu.message._id || contextMenu.message.createdAt);
+                                setContextMenu({ ...contextMenu, visible: false });
+                            }}>
+                                <CheckSquare size={16} />
+                                Select message
+                            </ContextMenuItem>
                             {!isAudioUrl(contextMenu.message.content) && contextMenu.message.sender._id === mongoUserId && (
                                 <ContextMenuItem onClick={() => startEditing(contextMenu.message)}>
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
@@ -4656,16 +5105,21 @@ export default function Dashboard() {
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4l-1.41 1.41L15.17 10H4v2h11.17l-4.58 4.59L12 18l7-7z"></path></svg>
                                 Forward Message
                             </ContextMenuItem>
-                            {contextMenu.message.sender._id === mongoUserId && (
-                                <ContextMenuItem onClick={() => deleteMessage(contextMenu.message._id)} style={{ color: '#ef4444' }}>
-                                    <Trash2 size={16} />
-                                    Delete Message
-                                </ContextMenuItem>
-                            )}
+                            <ContextMenuItem onClick={() => deleteMessage(contextMenu.message._id)} style={{ color: '#ef4444' }}>
+                                <Trash2 size={16} />
+                                Delete Message
+                            </ContextMenuItem>
                         </>
                     )}
                     {contextMenu.callLog && (
                         <>
+                            <ContextMenuItem onClick={() => {
+                                selectCallLog(contextMenu.callLog.id);
+                                setContextMenu({ ...contextMenu, visible: false });
+                            }}>
+                                <CheckSquare size={16} />
+                                Select call log
+                            </ContextMenuItem>
                             <ContextMenuItem onClick={() => openConversationWith(contextMenu.callLog.contactId)}>
                                 <MessageSquare size={16} />
                                 Message
@@ -4764,6 +5218,58 @@ export default function Dashboard() {
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--colors-accent)', boxShadow: '0 0 8px var(--colors-accent)' }} />
                     {toastMessage}
                 </div>
+            )}
+
+            {/* Delete Message Confirmation Modal */}
+            {deleteMessagePrompt.visible && (
+                <ModalOverlay onClick={() => setDeleteMessagePrompt({ visible: false, messageIds: [] })} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
+                    <ModalContent onClick={e => e.stopPropagation()} style={{ 
+                        maxWidth: '400px', 
+                        padding: '32px', 
+                        alignItems: 'center', 
+                        gap: '16px',
+                        background: 'var(--colors-surface)',
+                        border: '1px solid var(--colors-border)',
+                        borderRadius: '24px',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    }}>
+                        <div style={{ 
+                            width: '64px', height: '64px', borderRadius: '50%', 
+                            background: 'rgba(239, 68, 68, 0.1)', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', 
+                            marginBottom: '8px'
+                        }}>
+                            <Trash2 size={32} />
+                        </div>
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--colors-textMain)', margin: 0, textAlign: 'center' }}>Delete message?</h2>
+                        <p style={{ color: 'var(--colors-textMuted)', fontSize: '0.95rem', textAlign: 'center', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                            You can delete this message for everyone, or just for yourself.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+                            <Button 
+                                variant="primary" 
+                                onClick={confirmDeleteForEveryone}
+                                style={{ padding: '14px', borderRadius: '12px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: '600', fontSize: '1rem' }}
+                            >
+                                Delete for everyone
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                onClick={confirmDeleteForMe}
+                                style={{ padding: '14px', borderRadius: '12px', fontWeight: '600', fontSize: '1rem', border: '1px solid var(--colors-border)', backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}
+                            >
+                                Delete for me
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setDeleteMessagePrompt({ visible: false, messageIds: [] })}
+                                style={{ padding: '14px', borderRadius: '12px', fontWeight: '500', fontSize: '1rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </ModalContent>
+                </ModalOverlay>
             )}
 
             {/* Logout Confirmation Modal */}
