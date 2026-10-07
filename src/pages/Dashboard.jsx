@@ -1444,22 +1444,14 @@ export default function Dashboard() {
     const lastScrollTopRef = useRef(0);
     const touchHoldTimer = useRef(null);
     const touchStartCoords = useRef({ x: 0, y: 0 });
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    // Use empty string so requests go to the Vite proxy, avoiding Mixed Content on mobile HTTPS
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
 
     const handleMessageListScroll = () => {
         const messageList = messageListRef.current;
         if (!messageList) return;
-
-        const listTop = messageList.getBoundingClientRect().top;
-        const visibleMessages = messageList.querySelectorAll('[data-message-date]');
-        const currentMessage = Array.from(visibleMessages).find(
-            element => element.getBoundingClientRect().bottom > listTop + 48
-        );
-
-        if (currentMessage) {
-            setMessageDateLabel(currentMessage.dataset.messageDate);
-            setShowMessageDateLabel(true);
-        }
+        
+        setShowMessageDateLabel(true);
 
         if (messageDateHideTimerRef.current) {
             clearTimeout(messageDateHideTimerRef.current);
@@ -3202,33 +3194,7 @@ export default function Dashboard() {
                                         flex: 1
                                     }}>
                                         
-                                                                                {messageDateLabel && (
-                                            <div
-                                                role="status"
-                                                aria-live="polite"
-                                                aria-hidden={!showMessageDateLabel}
-                                                style={{
-                                                position: 'absolute',
-                                                top: '4px',
-                                                left: '50%',
-                                                transform: 'translateX(-50%)',
-                                                backgroundColor: 'rgba(30, 41, 59, 0.85)',
-                                                backdropFilter: 'blur(8px)',
-                                                padding: '4px 12px',
-                                                borderRadius: '16px',
-                                                fontSize: '0.8rem',
-                                                fontWeight: '500',
-                                                color: '#fff',
-                                                zIndex: 10,
-                                                outline: 'none',
-                                                boxShadow: 'none',
-                                                pointerEvents: 'none',
-                                                opacity: showMessageDateLabel ? 1 : 0,
-                                                transition: 'opacity 180ms ease',
-                                            }}>
-                                                {messageDateLabel}
-                                            </div>
-                                        )}
+                                                                                
                                         {messages.length === 0 ? (
                                             <div style={{ textAlign: 'center', marginTop: '2rem' }}>
                                                 Welcome to the beginning of the conversation.
@@ -3252,11 +3218,18 @@ export default function Dashboard() {
                                                     return (
                                                         <div key={msg._id || msg.createdAt} style={{ display: 'contents' }}>
                                                             {showDateSeparator && (
-                                                                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', margin: '24px 0 8px 0' }}>
+                                                                <div style={{ 
+                                                                    width: '100%', 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'center', 
+                                                                    margin: '32px 0 16px 0',
+                                                                    opacity: showMessageDateLabel ? 1 : 0,
+                                                                    transition: 'opacity 300ms ease'
+                                                                }}>
                                                                     <div style={{
                                                                         backgroundColor: 'rgba(30, 41, 59, 0.85)',
                                                                         backdropFilter: 'blur(8px)',
-                                                                        padding: '4px 12px',
+                                                                        padding: '6px 16px',
                                                                         borderRadius: '16px',
                                                                         fontSize: '0.85rem',
                                                                         fontWeight: '500',
