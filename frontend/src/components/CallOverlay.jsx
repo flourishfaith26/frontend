@@ -526,21 +526,35 @@ const CallOverlay = ({
             await flushPendingCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            const response = await socket.timeout(15000).emitWithAck('answer_call', { 
-                to: String(callConfig.callerData.from), 
-                signal: answer 
-            });
 
-            if (!response?.ok) {
-                throw new Error(response?.error || 'The caller did not receive your answer.');
-            }
+            // Mark the call as accepted immediately — the WebRTC handshake is
+            // already set up at this point. The emitWithAck below is just a
+            // delivery confirmation; we must not let its timeout gate the UI.
             setCallAccepted(true);
             callAcceptedRef.current = true;
             if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+
+            // Send the answer signal to the caller in the background.
+            // If delivery fails we log it, but we do NOT tear down an already-
+            // live call (ICE candidates will keep the connection going).
+            socket.timeout(15000).emitWithAck('answer_call', {
+                to: String(callConfig.callerData.from),
+                signal: answer
+            }).then((response) => {
+                if (!response?.ok) {
+                    console.warn('answer_call ack error:', response?.error);
+                }
+            }).catch((err) => {
+                // Ack timed out — log it but leave the call alive; ICE has
+                // likely already connected both peers by this point.
+                console.warn('answer_call ack timed out, call may still be connected via ICE:', err.message);
+            });
         } catch (err) {
             console.error('answerCall error:', err);
-            alert(err.message || 'Could not access camera or microphone.');
-            handleEndCallRef.current?.(true);
+            if (!callAcceptedRef.current) {
+                alert(err.message || 'Could not access camera or microphone.');
+                handleEndCallRef.current?.(true);
+            }
         }
     };
 
