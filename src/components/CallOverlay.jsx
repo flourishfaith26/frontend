@@ -242,7 +242,9 @@ const CallOverlay = ({
     activeConversation,
     callConfig,
     onEndCall,
-    currentUserData
+    currentUserData,
+    getAccessTokenSilently,
+    backendUrl
 }) => {
     const [callAccepted, setCallAccepted] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
@@ -261,6 +263,7 @@ const CallOverlay = ({
     const timerRef = useRef(null);
     const pendingCandidates = useRef([]);
     const remoteVideoEl = useRef(null);
+    const remoteAudioEl = useRef(null);
     const localVideoEl = useRef(null);
     const ringtoneRef = useRef(null);
 
@@ -268,6 +271,15 @@ const CallOverlay = ({
         remoteVideoEl.current = el;
         if (el && remoteStream.current) {
             el.srcObject = remoteStream.current;
+            void el.play().catch(error => console.warn('Unable to start remote video playback:', error));
+        }
+    }, []);
+
+    const remoteAudioCallbackRef = useCallback((el) => {
+        remoteAudioEl.current = el;
+        if (el && remoteStream.current) {
+            el.srcObject = remoteStream.current;
+            void el.play().catch(error => console.warn('Unable to start remote audio playback:', error));
         }
     }, []);
 
@@ -275,6 +287,7 @@ const CallOverlay = ({
         localVideoEl.current = el;
         if (el && localStream.current) {
             el.srcObject = localStream.current;
+            void el.play().catch(error => console.warn('Unable to start local video preview:', error));
         }
     }, []);
 
@@ -314,8 +327,8 @@ const CallOverlay = ({
         };
     }, [callConfig?.active, callAccepted]);
 
-    const buildPeerConnection = useCallback((targetUserId) => {
-        const pc = new RTCPeerConnection(ICE_SERVERS);
+    const buildPeerConnection = useCallback((targetUserId, iceServers) => {
+        const pc = new RTCPeerConnection({ iceServers });
 
         pc.onicecandidate = (e) => {
             if (e.candidate && socket) {
@@ -324,14 +337,22 @@ const CallOverlay = ({
         };
 
         pc.ontrack = (e) => {
-            const remoteStr = e.streams[0];
+            const remoteStr = e.streams[0] || remoteStream.current || new MediaStream();
+            if (!e.streams[0] && !remoteStr.getTracks().includes(e.track)) {
+                remoteStr.addTrack(e.track);
+            }
             remoteStream.current = remoteStr;
             if (remoteVideoEl.current) {
                 remoteVideoEl.current.srcObject = remoteStr;
+                void remoteVideoEl.current.play().catch(error => console.warn('Unable to start remote video playback:', error));
+            }
+            if (remoteAudioEl.current) {
+                remoteAudioEl.current.srcObject = remoteStr;
+                void remoteAudioEl.current.play().catch(error => console.warn('Unable to start remote audio playback:', error));
             }
             const updateRemoteVideoState = () => {
                 setRemoteVideoActive(remoteStr.getVideoTracks().some(
-                    track => track.enabled && track.readyState === 'live'
+                    track => track.enabled && track.readyState === 'live' && !track.muted
                 ));
             };
             remoteStr.getVideoTracks().forEach(track => {
@@ -340,6 +361,9 @@ const CallOverlay = ({
                 track.onended = updateRemoteVideoState;
             });
             updateRemoteVideoState();
+            e.track.onunmute = updateRemoteVideoState;
+            e.track.onmute = updateRemoteVideoState;
+            e.track.onended = updateRemoteVideoState;
         };
 
         if (localStream.current) {
@@ -369,14 +393,28 @@ const CallOverlay = ({
         return stream;
     };
 
+    const getIceServers = async () => {
+        const token = await getAccessTokenSilently();
+        const response = await fetch(`${backendUrl}/api/call-config`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error(`Could not load call network settings (${response.status}).`);
+        const callConfigResponse = await response.json();
+        if (!callConfigResponse.turnConfigured) {
+            console.warn('No TURN server is configured; calls may not connect on restrictive mobile networks.');
+        }
+        return callConfigResponse.iceServers || ICE_SERVERS.iceServers;
+    };
+
     const initiateCall = async () => {
         const other = activeConversation?.participants?.find(p => p._id !== mongoUserId);
         if (!other) { handleEndCall(); return; }
-        const pc = buildPeerConnection(other._id);
+        const iceServers = await getIceServers();
+        const pc = buildPeerConnection(other._id, iceServers);
         peerConnection.current = pc;
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callConfig?.callType === 'video' });
+        const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        socket.emit('call_user', {
+        socket.timeout(5000).emit('call_user', {
             userToCall: other._id,
             signalData: offer,
             from: mongoUserId,
@@ -385,6 +423,12 @@ const CallOverlay = ({
                 avatarUrl: currentUserData?.avatarUrl || ''
             },
             callType: callConfig.callType
+        }, (error, response) => {
+            if (error || !response?.ok) {
+                console.error('Unable to start call:', error || response?.error);
+                alert(response?.error || 'Could not connect the call. Please try again.');
+                handleEndCall(false);
+            }
         });
     };
 
@@ -393,20 +437,29 @@ const CallOverlay = ({
         setIsAnswering(true);
         try {
             await getMedia();
-            setCallAccepted(true);
-            callAcceptedRef.current = true;
-            const pc = buildPeerConnection(callConfig.callerData.from);
+            const iceServers = await getIceServers();
+            const pc = buildPeerConnection(callConfig.callerData.from, iceServers);
             peerConnection.current = pc;
-            // re-add tracks after pc is built (buildPeerConnection already added them via localStream.current)
             await pc.setRemoteDescription(new RTCSessionDescription(callConfig.callerData.signal));
             await flushPendingCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            socket.emit('answer_call', { to: callConfig.callerData.from, signal: answer });
+            await new Promise((resolve, reject) => {
+                socket.timeout(5000).emit('answer_call', { to: callConfig.callerData.from, signal: answer }, (error, response) => {
+                    if (error || !response?.ok) {
+                        reject(new Error(response?.error || 'The caller did not receive your answer.'));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            setCallAccepted(true);
+            callAcceptedRef.current = true;
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
         } catch (err) {
             console.error('answerCall error:', err);
-            alert('Could not access camera/microphone.');
-            handleEndCall();
+            alert(err.message || 'Could not access camera or microphone.');
+            handleEndCall(true);
         }
     };
 
@@ -455,7 +508,7 @@ const CallOverlay = ({
     }, [socket, callConfig, activeConversation, mongoUserId, onEndCall]);
 
     useEffect(() => {
-        if (!callConfig?.active || !callAccepted || !callConfig.isReceiving) return undefined;
+        if (!callConfig?.active || callAccepted || !callConfig.isReceiving) return undefined;
 
         ringTimeoutRef.current = setTimeout(() => {
             handleEndCall(true);
@@ -479,7 +532,7 @@ const CallOverlay = ({
                 }, 30000);
             } catch (err) {
                 console.error('initMedia error:', err);
-                if (!cancelled) { alert('Could not access camera/microphone.'); handleEndCall(); }
+                if (!cancelled) { alert(err.message || 'Could not access camera/microphone.'); handleEndCall(); }
             }
         })();
         return () => { cancelled = true; };
@@ -490,12 +543,20 @@ const CallOverlay = ({
     useEffect(() => {
         if (!socket) return;
         const onCallAccepted = async (signal) => {
-            setCallAccepted(true);
-            callAcceptedRef.current = true;
-            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
-            if (peerConnection.current) {
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
-                await flushPendingCandidates();
+            try {
+                if (peerConnection.current) {
+                    await peerConnection.current.setRemoteDescription(new RTCSessionDescription(signal));
+                    await flushPendingCandidates();
+                } else {
+                    throw new Error('The call connection is not ready yet.');
+                }
+                setCallAccepted(true);
+                callAcceptedRef.current = true;
+                if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            } catch (error) {
+                console.error('Unable to apply call answer:', error);
+                alert('Could not connect the call. Please try again.');
+                handleEndCall(true);
             }
         };
         const onIceCandidate = async (candidate) => {
@@ -589,12 +650,14 @@ const CallOverlay = ({
                 <VideoGrid>
                     {/* Remote tile */}
                     <VideoWrapper>
-                        <video
+                                <video
                             ref={remoteVideoCallbackRef}
                             autoPlay
                             playsInline
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: remoteVideoActive ? 'block' : 'none' }}
-                        />
+                                    muted
+                                    onPlaying={() => setRemoteVideoActive(true)}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: remoteVideoActive ? 'block' : 'none' }}
+                                />
                         {!remoteVideoActive && (
                             <AvatarFallback>
                                 <SmallAvatarImg src={callerAvatar} alt={callerName} onError={e => { e.target.onerror = null; e.target.src = avatarFallback(callerName); }} />
@@ -631,10 +694,12 @@ const CallOverlay = ({
                     </CallingAnimation>
                     <CallerNameText>{callerName}</CallerNameText>
                     <CallStatusText style={{ color: '#10B981' }}>{formatDuration(callDuration)}</CallStatusText>
-                    <video ref={remoteVideoCallbackRef} autoPlay playsInline style={{ display: 'none' }} />
+                    <video ref={remoteVideoCallbackRef} autoPlay playsInline muted style={{ display: 'none' }} />
                     <video ref={localVideoCallbackRef} autoPlay playsInline muted style={{ display: 'none' }} />
                 </CallerInfo>
             )}
+
+            <audio ref={remoteAudioCallbackRef} autoPlay playsInline />
 
             {/* Duration badge (video calls) */}
             {callAccepted && isVideoCall && (

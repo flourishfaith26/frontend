@@ -429,6 +429,39 @@ const MobileBackButton = styled('button', {
     }
 });
 
+const toastEnter = keyframes({
+    from: { opacity: 0, transform: 'translate(-50%, 8px) scale(0.98)' },
+    to: { opacity: 1, transform: 'translate(-50%, 0) scale(1)' },
+});
+
+const ToastNotification = styled('div', {
+    position: 'fixed',
+    left: '50%',
+    bottom: '24px',
+    transform: 'translateX(-50%)',
+    maxWidth: 'calc(100vw - 32px)',
+    boxSizing: 'border-box',
+    backgroundColor: 'rgba(25, 34, 40, 0.95)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    color: '#f1f5f6',
+    padding: '8px 16px',
+    borderRadius: '20px',
+    zIndex: 10000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.85rem',
+    lineHeight: 1.3,
+    fontWeight: '400',
+    textAlign: 'center',
+    animation: `${toastEnter} 0.18s ease-out`,
+    '@media (max-width: 768px)': {
+        bottom: 'calc(68px + env(safe-area-inset-bottom, 0px))',
+        padding: '6px 12px',
+        fontSize: '0.8rem',
+    },
+});
+
 const floatDoodle = keyframes({
     '0%': { backgroundPosition: 'center, 0px 0px, 0% 50%' },
     '50%': { backgroundPosition: 'center, 200px 200px, 100% 50%' },
@@ -5077,6 +5110,8 @@ export default function Dashboard() {
                 activeConversation={activeConversation}
                 callConfig={callConfig}
                 currentUserData={currentUserData}
+                getAccessTokenSilently={getAccessTokenSilently}
+                backendUrl={BACKEND_URL}
                 onEndCall={() => setCallConfig({ active: false, isReceiving: false, callerData: null, callType: 'video' })}
             /></Suspense>
 
@@ -5236,28 +5271,10 @@ export default function Dashboard() {
 
             {/* Toast Notification */}
             {toastMessage && (
-                <div style={{
-                    position: 'fixed',
-                    bottom: '32px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: 'var(--colors-surface)',
-                    border: '1px solid var(--colors-border)',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(6, 182, 212, 0.3)',
-                    color: 'var(--colors-textMain)',
-                    padding: '14px 24px',
-                    borderRadius: '50px',
-                    zIndex: 10000,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    fontSize: '1rem',
-                    fontWeight: '500',
-                    animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-                }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--colors-accent)', boxShadow: '0 0 8px var(--colors-accent)' }} />
+                <ToastNotification role="status" aria-live="polite">
+
                     {toastMessage}
-                </div>
+                </ToastNotification>
             )}
 
             {/* Delete Message Confirmation Modal */}
