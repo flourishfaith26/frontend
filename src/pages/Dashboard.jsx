@@ -1528,6 +1528,11 @@ export default function Dashboard() {
         localStorage.setItem('appSettings', JSON.stringify(appSettings));
     }, [appSettings]);
 
+    const activeConversationIdRef = useRef(activeConversationId);
+    activeConversationIdRef.current = activeConversationId;
+    const appSettingsRef = useRef(appSettings);
+    appSettingsRef.current = appSettings;
+
     const handleUpdateProfile = async (updates) => {
         try {
             const token = await getAccessTokenSilently();
@@ -1721,22 +1726,35 @@ export default function Dashboard() {
                 newSocket.on('connect', () => {
                     newSocket.emit('user_connected', mongoUser._id);
                 });
+                if (newSocket.connected) {
+                    newSocket.emit('user_connected', mongoUser._id);
+                }
 
                 newSocket.on('presence_update', (onlineUserIds) => {
                     setActiveUsers(onlineUserIds);
                 });
 
                 newSocket.on('receive_message', (incomingMessage) => {
-                    if (incomingMessage.sender._id !== mongoUser._id) {
+                    const incomingSenderId = String(incomingMessage.sender?._id || incomingMessage.sender || '');
+                    const currentUid = String(mongoUser._id || '');
+                    if (incomingSenderId && currentUid && incomingSenderId !== currentUid) {
                         newSocket.emit('mark_messages_delivered', { 
                             conversationId: incomingMessage.conversationId, 
-                            userId: mongoUser._id, 
+                            userId: currentUid, 
                             messageIds: [incomingMessage._id] 
                         });
+
+                        if (activeConversationIdRef.current === incomingMessage.conversationId && appSettingsRef.current?.readReceipts) {
+                            newSocket.emit('mark_messages_read', {
+                                conversationId: incomingMessage.conversationId,
+                                userId: currentUid,
+                                messageIds: [incomingMessage._id]
+                            });
+                        }
                     }
 
                     setMessages((prev) => {
-                        if (prev.some(msg => msg._id === incomingMessage._id)) return prev;
+                        if (prev.some(msg => String(msg._id) === String(incomingMessage._id))) return prev;
                         return [...prev, incomingMessage];
                     });
 
@@ -1762,11 +1780,15 @@ export default function Dashboard() {
 
                 newSocket.on('messages_status_updated', ({ messageIds, status, userId }) => {
                     setMessages(prev => prev.map(msg => {
-                        if (messageIds.includes(msg._id)) {
+                        if (messageIds && messageIds.some(id => String(id) === String(msg._id))) {
+                            const uid = String(userId);
                             if (status === 'delivered') {
-                                return { ...msg, deliveredTo: [...(msg.deliveredTo || []), userId] };
+                                const deliveredTo = Array.from(new Set([...(msg.deliveredTo || []).map(String), uid]));
+                                return { ...msg, deliveredTo };
                             } else if (status === 'read') {
-                                return { ...msg, readBy: [...(msg.readBy || []), userId] };
+                                const readBy = Array.from(new Set([...(msg.readBy || []).map(String), uid]));
+                                const deliveredTo = Array.from(new Set([...(msg.deliveredTo || []).map(String), uid]));
+                                return { ...msg, readBy, deliveredTo };
                             }
                         }
                         return msg;
@@ -1857,8 +1879,8 @@ export default function Dashboard() {
         // Find messages in the active chat that are NOT from us, and NOT yet read by us
         const unreadMessages = messages.filter(m => 
             m.conversationId === activeConversationId && 
-            m.sender._id !== mongoUserId && 
-            !(m.readBy && m.readBy.includes(mongoUserId))
+            String(m.sender?._id || m.sender) !== String(mongoUserId) && 
+            !(m.readBy && m.readBy.some(id => String(id) === String(mongoUserId)))
         );
 
         if (unreadMessages.length > 0) {
@@ -2209,14 +2231,14 @@ export default function Dashboard() {
     };
 
     const openConversationWith = async (contactId, thenCall = null) => {
-        let conv = conversations.find(c => c.type === 'direct' && c.participants.some(p => p._id === contactId));
+        let conv = conversations.find(c => c.type === 'direct' && c.participants.some(p => String(p?._id || p) === String(contactId)));
         if (!conv) {
             try {
                 const token = await getAccessTokenSilently();
                 const res = await fetch(`${BACKEND_URL}/api/conversations`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ type: 'direct', participants: [mongoUserId, contactId] })
+                    body: JSON.stringify({ type: 'direct', participantIds: [mongoUserId, contactId] })
                 });
                 if (res.ok) {
                     conv = await res.json();
@@ -3500,7 +3522,7 @@ export default function Dashboard() {
                                                         Whiteboard
                                                     </ContextMenuItem>}
                                                     <ContextMenuItem onClick={() => { 
-                                                        setCallConfig({ active: true, isReceiving: false, callerData: activeConversation, callType: 'video' });
+                                                        setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'video' });
                                                         setIsHeaderMenuOpen(false); 
                                                     }}>
                                                         <Video size={18} style={{ opacity: 0.8 }} />
@@ -3638,7 +3660,8 @@ export default function Dashboard() {
                                                 {[...messages].sort(compareMessages).filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg, index, array) => {
 
 
-                                                    const isOwnMessage = msg.sender?._id === mongoUserId;
+                                                    const senderId = String(msg.sender?._id || msg.sender || '');
+                                                    const isOwnMessage = Boolean(senderId && mongoUserId && senderId === String(mongoUserId));
                                                     const isGroup = activeConversation?.type === 'group';
                                                     const showSenderName = isGroup && !isOwnMessage;
                                                     const isOnlyUrl = (msg.content && typeof msg.content === 'string') && (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
@@ -3922,15 +3945,20 @@ export default function Dashboard() {
                                                                                     return <CheckCheck size={14} color="rgba(255,255,255,0.6)" />; // Always show 2 grey ticks if receipts are disabled
                                                                                 }
                                                                                 
-                                                                                const readCount = msg.readBy ? msg.readBy.length : 0;
-                                                                                const deliveredCount = msg.deliveredTo ? msg.deliveredTo.length : 0;
+                                                                                // Exclude the sender's own ID from counts (only other users count)
+                                                                                const readCount = msg.readBy
+                                                                                    ? msg.readBy.filter(id => String(id?._id || id) !== String(mongoUserId)).length
+                                                                                    : 0;
+                                                                                const deliveredCount = msg.deliveredTo
+                                                                                    ? msg.deliveredTo.filter(id => String(id?._id || id) !== String(mongoUserId)).length
+                                                                                    : 0;
                                                                                 
                                                                                 if (readCount > 0) {
-                                                                                    return <CheckCheck size={14} color="#3b82f6" />; // Blue ticks
+                                                                                    return <CheckCheck size={14} color="#06B6D4" />; // Blue ticks = read
                                                                                 } else if (deliveredCount > 0) {
-                                                                                    return <CheckCheck size={14} color="rgba(255,255,255,0.6)" />; // Two grey ticks
+                                                                                    return <CheckCheck size={14} color="rgba(255,255,255,0.6)" />; // Two grey ticks = delivered
                                                                                 } else {
-                                                                                    return <Check size={14} color="rgba(255,255,255,0.6)" />; // One grey tick
+                                                                                    return <Check size={14} color="rgba(255,255,255,0.6)" />; // One grey tick = sent
                                                                                 }
                                                                             })()}
                                                                         </span>

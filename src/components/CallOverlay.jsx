@@ -383,92 +383,28 @@ const CallOverlay = ({
         pendingCandidates.current = [];
     };
 
-    const getMedia = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: callConfig?.callType === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-            audio: { echoCancellation: true, noiseSuppression: true },
-        });
-        localStream.current = stream;
-        if (localVideoEl.current) localVideoEl.current.srcObject = stream;
-        return stream;
-    };
+    const getOtherParticipant = useCallback(() => {
+        if (!activeConversation?.participants) return null;
+        return activeConversation.participants.find(p => {
+            const id = typeof p === 'object' && p !== null ? (p._id || p.id) : p;
+            return String(id) !== String(mongoUserId);
+        }) || null;
+    }, [activeConversation?.participants, mongoUserId]);
 
-    const getIceServers = async () => {
-        const token = await getAccessTokenSilently();
-        const response = await fetch(`${backendUrl}/api/call-config`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error(`Could not load call network settings (${response.status}).`);
-        const callConfigResponse = await response.json();
-        if (!callConfigResponse.turnConfigured) {
-            console.warn('No TURN server is configured; calls may not connect on restrictive mobile networks.');
-        }
-        return callConfigResponse.iceServers || ICE_SERVERS.iceServers;
-    };
+    const getOtherParticipantId = useCallback(() => {
+        const other = getOtherParticipant();
+        if (!other) return null;
+        return String(typeof other === 'object' && other !== null ? (other._id || other.id) : other);
+    }, [getOtherParticipant]);
 
-    const initiateCall = async () => {
-        const other = activeConversation?.participants?.find(p => p._id !== mongoUserId);
-        if (!other) { handleEndCall(); return; }
-        const iceServers = await getIceServers();
-        const pc = buildPeerConnection(other._id, iceServers);
-        peerConnection.current = pc;
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.timeout(5000).emit('call_user', {
-            userToCall: other._id,
-            signalData: offer,
-            from: mongoUserId,
-            callerInfo: {
-                name: currentUserData?.displayName || 'Someone',
-                avatarUrl: currentUserData?.avatarUrl || ''
-            },
-            callType: callConfig.callType
-        }, (error, response) => {
-            if (error || !response?.ok) {
-                console.error('Unable to start call:', error || response?.error);
-                alert(response?.error || 'Could not connect the call. Please try again.');
-                handleEndCall(false);
-            }
-        });
-    };
-
-    const answerCall = async () => {
-        if (isAnswering) return;
-        setIsAnswering(true);
-        try {
-            await getMedia();
-            const iceServers = await getIceServers();
-            const pc = buildPeerConnection(callConfig.callerData.from, iceServers);
-            peerConnection.current = pc;
-            await pc.setRemoteDescription(new RTCSessionDescription(callConfig.callerData.signal));
-            await flushPendingCandidates();
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await new Promise((resolve, reject) => {
-                socket.timeout(5000).emit('answer_call', { to: callConfig.callerData.from, signal: answer }, (error, response) => {
-                    if (error || !response?.ok) {
-                        reject(new Error(response?.error || 'The caller did not receive your answer.'));
-                    } else {
-                        resolve();
-                    }
-                });
-            });
-            setCallAccepted(true);
-            callAcceptedRef.current = true;
-            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
-        } catch (err) {
-            console.error('answerCall error:', err);
-            alert(err.message || 'Could not access camera or microphone.');
-            handleEndCall(true);
-        }
-    };
+    const handleEndCallRef = useRef(null);
 
     const handleEndCall = useCallback((emitEvent = true) => {
         clearInterval(timerRef.current);
         if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
         if (socket && callConfig && !callConfig.isReceiving) {
             const isGroup = activeConversation?.type === 'group';
-            const otherUserId = isGroup ? null : activeConversation?.participants?.find(p => p._id !== mongoUserId)?._id;
+            const otherUserId = isGroup ? null : getOtherParticipantId();
             socket.emit('log_call', {
                 callerId: mongoUserId,
                 receiverId: otherUserId,
@@ -479,8 +415,8 @@ const CallOverlay = ({
         }
         if (emitEvent && socket && callConfig) {
             const otherUserId = callConfig.isReceiving
-                ? callConfig.callerData?.from
-                : activeConversation?.participants?.find(p => p._id !== mongoUserId)?._id;
+                ? (callConfig.callerData?.from ? String(callConfig.callerData.from) : null)
+                : getOtherParticipantId();
             if (otherUserId) {
                 if (!callAcceptedRef.current && callConfig.isReceiving) {
                     socket.emit('reject_call', { to: otherUserId });
@@ -505,18 +441,105 @@ const CallOverlay = ({
         setRemoteVideoActive(false);
         setCallDuration(0);
         onEndCall();
-    }, [socket, callConfig, activeConversation, mongoUserId, onEndCall]);
+    }, [socket, callConfig, activeConversation, mongoUserId, onEndCall, getOtherParticipantId]);
+
+    handleEndCallRef.current = handleEndCall;
+
+    const getMedia = useCallback(async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: callConfig?.callType === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+            audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        localStream.current = stream;
+        if (localVideoEl.current) localVideoEl.current.srcObject = stream;
+        return stream;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [callConfig?.callType]);
+
+    const getIceServers = async () => {
+        const token = await getAccessTokenSilently();
+        const response = await fetch(`${backendUrl}/api/call-config`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error(`Could not load call network settings (${response.status}).`);
+        const callConfigResponse = await response.json();
+        if (!callConfigResponse.turnConfigured) {
+            console.warn('No TURN server is configured; calls may not connect on restrictive mobile networks.');
+        }
+        return callConfigResponse.iceServers || ICE_SERVERS.iceServers;
+    };
+
+    const initiateCall = async () => {
+        const otherId = getOtherParticipantId();
+        if (!otherId) {
+            console.error('initiateCall: could not find other participant in', activeConversation?.participants);
+            handleEndCallRef.current?.();
+            return;
+        }
+        const iceServers = await getIceServers();
+        const pc = buildPeerConnection(otherId, iceServers);
+        peerConnection.current = pc;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.timeout(5000).emit('call_user', {
+            userToCall: otherId,
+            signalData: offer,
+            from: mongoUserId,
+            callerInfo: {
+                name: currentUserData?.displayName || 'Someone',
+                avatarUrl: currentUserData?.avatarUrl || ''
+            },
+            callType: callConfig.callType
+        }, (error, response) => {
+            if (error || !response?.ok) {
+                console.error('Unable to start call:', error || response?.error);
+                alert(response?.error || 'Could not connect the call. Please try again.');
+                handleEndCallRef.current?.(false);
+            }
+        });
+    };
+
+    const answerCall = async () => {
+        if (isAnswering) return;
+        setIsAnswering(true);
+        try {
+            await getMedia();
+            const iceServers = await getIceServers();
+            const pc = buildPeerConnection(String(callConfig.callerData.from), iceServers);
+            peerConnection.current = pc;
+            await pc.setRemoteDescription(new RTCSessionDescription(callConfig.callerData.signal));
+            await flushPendingCandidates();
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await new Promise((resolve, reject) => {
+                socket.timeout(5000).emit('answer_call', { to: String(callConfig.callerData.from), signal: answer }, (error, response) => {
+                    if (error || !response?.ok) {
+                        reject(new Error(response?.error || 'The caller did not receive your answer.'));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            setCallAccepted(true);
+            callAcceptedRef.current = true;
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+        } catch (err) {
+            console.error('answerCall error:', err);
+            alert(err.message || 'Could not access camera or microphone.');
+            handleEndCallRef.current?.(true);
+        }
+    };
 
     useEffect(() => {
         if (!callConfig?.active || callAccepted || !callConfig.isReceiving) return undefined;
 
         ringTimeoutRef.current = setTimeout(() => {
-            handleEndCall(true);
+            handleEndCallRef.current?.(true);
         }, 30000);
         return () => {
             if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
         };
-    }, [callConfig?.active, callConfig?.isReceiving, callConfig?.callerData, callAccepted, handleEndCall]);
+    }, [callConfig?.active, callConfig?.isReceiving, callConfig?.callerData, callAccepted]);
 
     // Init media on mount (caller side)
     useEffect(() => {
@@ -528,11 +551,11 @@ const CallOverlay = ({
                 if (cancelled) { localStream.current?.getTracks().forEach(t => t.stop()); return; }
                 await initiateCall();
                 ringTimeoutRef.current = setTimeout(() => {
-                    if (!callAcceptedRef.current) handleEndCall(true);
+                    if (!callAcceptedRef.current) handleEndCallRef.current?.(true);
                 }, 30000);
             } catch (err) {
                 console.error('initMedia error:', err);
-                if (!cancelled) { alert(err.message || 'Could not access camera/microphone.'); handleEndCall(); }
+                if (!cancelled) { alert(err.message || 'Could not access camera/microphone.'); handleEndCallRef.current?.(); }
             }
         })();
         return () => { cancelled = true; };
@@ -594,15 +617,19 @@ const CallOverlay = ({
 
     if (!callConfig?.active) return null;
 
+    const otherParticipant = getOtherParticipant();
+    const otherDisplayName = otherParticipant?.displayName || 'Contact';
+    const otherAvatarUrl = otherParticipant?.avatarUrl;
+
     const callerName = callConfig.isReceiving
         ? callConfig.callerData?.callerInfo?.name || 'Someone'
-        : activeConversation?.participants?.find(p => p._id !== mongoUserId)?.displayName || 'Contact';
+        : otherDisplayName;
 
     const callerAvatar = callConfig.isReceiving
         ? (callConfig.callerData?.callerInfo?.avatarUrl
-            || activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl
+            || otherAvatarUrl
             || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`)
-        : (activeConversation?.participants?.find(p => p._id !== mongoUserId)?.avatarUrl
+        : (otherAvatarUrl
             || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=06B6D4&color=fff`);
 
     const myName = currentUserData?.displayName || 'You';
