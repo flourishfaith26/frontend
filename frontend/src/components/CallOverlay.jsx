@@ -498,9 +498,15 @@ const CallOverlay = ({
             },
             callType: callConfig.callType
         }, (error, response) => {
-            if (error || !response?.ok) {
+            // Only abort if the call hasn't already been accepted — a stale timeout
+            // must not tear down a call that connected just fine.
+            if ((error || !response?.ok) && !callAcceptedRef.current) {
                 console.error('Unable to start call:', error || response?.error);
-                alert(response?.error || 'Could not connect the call. Please try again.');
+                const errMsg = response?.error || 'Could not connect the call. Please try again.';
+                if (errMsg !== 'The person is not connected.') {
+                    // Suppress generic socket-timeout noise once the call is live
+                }
+                alert(errMsg);
                 handleEndCallRef.current?.(false);
             }
         });
@@ -585,8 +591,12 @@ const CallOverlay = ({
                 if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
             } catch (error) {
                 console.error('Unable to apply call answer:', error);
-                alert('Could not connect the call. Please try again.');
-                handleEndCall(true);
+                // If the call is already accepted and running, don't kill it over a
+                // duplicate or late call_accepted event.
+                if (!callAcceptedRef.current) {
+                    alert('Could not connect the call. Please try again.');
+                    handleEndCall(true);
+                }
             }
         };
         const onIceCandidate = async (candidate) => {
