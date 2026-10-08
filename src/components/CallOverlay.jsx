@@ -461,6 +461,10 @@ const CallOverlay = ({
         const response = await fetch(`${backendUrl}/api/call-config`, {
             headers: { Authorization: `Bearer ${token}` }
         });
+        if (response.status === 404) {
+            console.warn('Call network settings endpoint was not found; continuing with public STUN servers. Configure the backend call-config route and TURN settings for more reliable calls across restrictive networks.');
+            return ICE_SERVERS.iceServers;
+        }
         if (!response.ok) throw new Error(`Could not load call network settings (${response.status}).`);
         const callConfigResponse = await response.json();
         if (!callConfigResponse.turnConfigured) {
