@@ -488,24 +488,30 @@ const CallOverlay = ({
         peerConnection.current = pc;
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        socket.timeout(15000).emit('call_user', {
-            userToCall: otherId,
-            signalData: offer,
-            from: mongoUserId,
-            callerInfo: {
-                name: currentUserData?.displayName || 'Someone',
-                avatarUrl: currentUserData?.avatarUrl || ''
-            },
-            callType: callConfig.callType
-        }, (error, response) => {
+        try {
+            const response = await socket.timeout(15000).emitWithAck('call_user', {
+                userToCall: otherId,
+                signalData: offer,
+                from: mongoUserId,
+                callerInfo: {
+                    name: currentUserData?.displayName || 'Someone',
+                    avatarUrl: currentUserData?.avatarUrl || ''
+                },
+                callType: callConfig.callType
+            });
+
+            if (!response?.ok) {
+                throw new Error(response?.error || 'Could not connect the call.');
+            }
+        } catch (error) {
             // Only abort if the call hasn't already been accepted — a stale timeout
             // must not tear down a call that connected just fine.
-            if ((error || !response?.ok) && !callAcceptedRef.current) {
-                console.error('Unable to start call:', error || response?.error);
-                alert(response?.error || 'Could not connect the call. Please try again.');
+            if (!callAcceptedRef.current) {
+                console.error('Unable to start call:', error);
+                alert(error.message || 'Could not connect the call. Please try again.');
                 handleEndCallRef.current?.(false);
             }
-        });
+        }
     };
 
     const answerCall = async () => {
@@ -520,15 +526,14 @@ const CallOverlay = ({
             await flushPendingCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            await new Promise((resolve, reject) => {
-                socket.timeout(15000).emit('answer_call', { to: String(callConfig.callerData.from), signal: answer }, (error, response) => {
-                    if (error || !response?.ok) {
-                        reject(new Error(response?.error || 'The caller did not receive your answer.'));
-                    } else {
-                        resolve();
-                    }
-                });
+            const response = await socket.timeout(15000).emitWithAck('answer_call', { 
+                to: String(callConfig.callerData.from), 
+                signal: answer 
             });
+
+            if (!response?.ok) {
+                throw new Error(response?.error || 'The caller did not receive your answer.');
+            }
             setCallAccepted(true);
             callAcceptedRef.current = true;
             if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
