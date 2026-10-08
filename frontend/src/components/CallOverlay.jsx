@@ -488,7 +488,7 @@ const CallOverlay = ({
         peerConnection.current = pc;
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        socket.timeout(5000).emit('call_user', {
+        socket.timeout(15000).emit('call_user', {
             userToCall: otherId,
             signalData: offer,
             from: mongoUserId,
@@ -519,7 +519,7 @@ const CallOverlay = ({
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await new Promise((resolve, reject) => {
-                socket.timeout(5000).emit('answer_call', { to: String(callConfig.callerData.from), signal: answer }, (error, response) => {
+                socket.timeout(15000).emit('answer_call', { to: String(callConfig.callerData.from), signal: answer }, (error, response) => {
                     if (error || !response?.ok) {
                         reject(new Error(response?.error || 'The caller did not receive your answer.'));
                     } else {

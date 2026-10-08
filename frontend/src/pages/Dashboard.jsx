@@ -1726,6 +1726,9 @@ export default function Dashboard() {
                 newSocket.on('connect', () => {
                     newSocket.emit('user_connected', mongoUser._id);
                 });
+                newSocket.on('reconnect', () => {
+                    newSocket.emit('user_connected', mongoUser._id);
+                });
                 if (newSocket.connected) {
                     newSocket.emit('user_connected', mongoUser._id);
                 }
