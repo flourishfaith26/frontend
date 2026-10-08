@@ -228,18 +228,35 @@ export const setupSocket = (io) => {
 
         // 5. WebRTC Signaling
         socket.on('call_user', async ({ userToCall, signalData, from, callerInfo, callType }, acknowledge) => {
-            const targetSockets = await io.in(getUserRoom(userToCall)).allSockets();
-            if (targetSockets.size === 0) {
-                acknowledge?.({ ok: false, error: 'The person is not connected.' });
-                return;
-            }
-            io.to(getUserRoom(userToCall)).emit('call_user', {
+            const callPayload = {
                 signal: signalData,
                 from: String(from),
                 callerInfo,
                 callType
-            });
-            acknowledge?.({ ok: true });
+            };
+
+            // Retry delivering the call for up to 10 seconds to handle Render cold-start
+            // reconnect races where the callee's socket re-joins their room slightly late.
+            const MAX_WAIT_MS = 10000;
+            const RETRY_INTERVAL_MS = 500;
+            let elapsed = 0;
+
+            const tryDeliver = async () => {
+                const targetSockets = await io.in(getUserRoom(userToCall)).allSockets();
+                if (targetSockets.size > 0) {
+                    io.to(getUserRoom(userToCall)).emit('call_user', callPayload);
+                    acknowledge?.({ ok: true });
+                    return;
+                }
+                if (elapsed >= MAX_WAIT_MS) {
+                    acknowledge?.({ ok: false, error: 'The person is not connected.' });
+                    return;
+                }
+                elapsed += RETRY_INTERVAL_MS;
+                setTimeout(tryDeliver, RETRY_INTERVAL_MS);
+            };
+
+            await tryDeliver();
         });
 
         socket.on('answer_call', async ({ to, signal }, acknowledge) => {

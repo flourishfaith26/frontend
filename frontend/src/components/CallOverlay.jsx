@@ -502,11 +502,7 @@ const CallOverlay = ({
             // must not tear down a call that connected just fine.
             if ((error || !response?.ok) && !callAcceptedRef.current) {
                 console.error('Unable to start call:', error || response?.error);
-                const errMsg = response?.error || 'Could not connect the call. Please try again.';
-                if (errMsg !== 'The person is not connected.') {
-                    // Suppress generic socket-timeout noise once the call is live
-                }
-                alert(errMsg);
+                alert(response?.error || 'Could not connect the call. Please try again.');
                 handleEndCallRef.current?.(false);
             }
         });
