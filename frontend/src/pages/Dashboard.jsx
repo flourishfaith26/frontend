@@ -4047,8 +4047,16 @@ export default function Dashboard() {
                                             </div>
                                         ) : (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'flex-start' }}>
-                                                {[...messages].sort(compareMessages).filter(msg => !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()))).map((msg, index, array) => {
-
+                                                {[...messages].sort(compareMessages).filter(msg => {
+                                                    const senderId = String(msg.sender?._id || msg.sender || '');
+                                                    const isOwnMessage = Boolean(senderId && mongoUserId && senderId === String(mongoUserId));
+                                                    
+                                                    if (msg.isDeletedForEveryone && isOwnMessage) {
+                                                        return false;
+                                                    }
+                                                    
+                                                    return !searchQuery || (msg.content && (typeof msg.content === 'string') && msg.content.toLowerCase().includes(searchQuery.toLowerCase()));
+                                                }).map((msg, index, array) => {
 
                                                     const senderId = String(msg.sender?._id || msg.sender || '');
                                                     const isOwnMessage = Boolean(senderId && mongoUserId && senderId === String(mongoUserId));
