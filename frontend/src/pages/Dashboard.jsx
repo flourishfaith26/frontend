@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { io } from 'socket.io-client';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -1374,6 +1374,8 @@ export default function Dashboard() {
         allowDeleteForEveryone: false
     });
     const [isDeletingMessages, setIsDeletingMessages] = useState(false);
+    const pendingEveryoneDeleteRef = useRef(null);
+    const completeDeleteForEveryoneRef = useRef(null);
 
     useEffect(() => {
         if (toastMessage) {
@@ -1384,7 +1386,7 @@ export default function Dashboard() {
 
     const showToast = (msg) => setToastMessage(msg);
 
-    const applyMessagesDeletedForEveryone = (conversationId, messageIds) => {
+    const applyMessagesDeletedForEveryone = useCallback((conversationId, messageIds) => {
         const deletedIds = new Set(messageIds.map(String));
         const normalizedConversationId = String(conversationId);
         setMessages(previous => previous.map(message => {
@@ -1423,7 +1425,36 @@ export default function Dashboard() {
                 }
             };
         }));
-    };
+    }, []);
+
+    const completeDeleteForEveryone = useCallback((conversationId, messageIds) => {
+        applyMessagesDeletedForEveryone(conversationId, messageIds);
+        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false });
+        setIsDeletingMessages(false);
+        setIsSelectingMessages(false);
+        setSelectedMessages([]);
+        setMessageSelectionConversationId(null);
+
+        const pendingDelete = pendingEveryoneDeleteRef.current;
+        if (
+            pendingDelete &&
+            String(pendingDelete.conversationId) === String(conversationId) &&
+            messageIds.every(id => pendingDelete.messageIds.includes(String(id)))
+        ) {
+            pendingDelete.confirmedByBroadcast = true;
+        }
+    }, [
+        applyMessagesDeletedForEveryone,
+        setDeleteMessagePrompt,
+        setIsDeletingMessages,
+        setIsSelectingMessages,
+        setSelectedMessages,
+        setMessageSelectionConversationId
+    ]);
+
+    useEffect(() => {
+        completeDeleteForEveryoneRef.current = completeDeleteForEveryone;
+    }, [completeDeleteForEveryone]);
 
     const toggleSelection = (setSelectedItems, itemId) => {
         setSelectedItems(previous => previous.includes(itemId)
@@ -1948,7 +1979,7 @@ export default function Dashboard() {
 
                 newSocket.on('messages_deleted_for_everyone', ({ messageIds, conversationId }) => {
                     if (!Array.isArray(messageIds) || !conversationId) return;
-                    applyMessagesDeletedForEveryone(conversationId, messageIds);
+                    completeDeleteForEveryoneRef.current?.(conversationId, messageIds);
                 });
 
                 newSocket.on('messages_deleted_for_me', (deletedMsgIds) => {
@@ -2382,21 +2413,32 @@ export default function Dashboard() {
     const confirmDeleteForEveryone = () => {
         const { conversationId, messageIds } = deleteMessagePrompt;
         if (!socket || !conversationId || !messageIds.length) return;
+        const normalizedIds = messageIds.map(String);
+        pendingEveryoneDeleteRef.current = {
+            conversationId: String(conversationId),
+            messageIds: normalizedIds,
+            confirmedByBroadcast: false
+        };
         setIsDeletingMessages(true);
         socket.timeout(15000).emit('delete_message_for_everyone', {
-            messageIds,
+            messageIds: normalizedIds,
             conversationId
         }, (error, result) => {
-            setIsDeletingMessages(false);
-            if (error || !result?.ok) {
-                console.error('Could not delete messages for everyone:', error || result?.error);
-                showToast(result?.error || 'Message deletion failed. Please try again.');
+            const pendingDelete = pendingEveryoneDeleteRef.current;
+            if (pendingDelete?.confirmedByBroadcast) {
+                pendingEveryoneDeleteRef.current = null;
                 return;
             }
 
-            applyMessagesDeletedForEveryone(conversationId, result.deletedIds || messageIds);
-            setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false });
-            cancelMessageSelection();
+            pendingEveryoneDeleteRef.current = null;
+            setIsDeletingMessages(false);
+            if (error || !result?.ok) {
+                console.error('Could not delete messages for everyone:', error || result?.error);
+                showToast(result?.error || 'The backend did not confirm deletion. Deploy the latest backend and try again.');
+                return;
+            }
+
+            completeDeleteForEveryone(conversationId, result.deletedIds || normalizedIds);
         });
     };
 
