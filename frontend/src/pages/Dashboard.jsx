@@ -462,6 +462,21 @@ const ToastNotification = styled('div', {
     },
 });
 
+const IncomingMessageNotification = styled('section', {
+    position: 'fixed',
+    top: '16px',
+    right: '16px',
+    width: 'min(360px, calc(100vw - 32px))',
+    boxSizing: 'border-box',
+    padding: '16px',
+    borderRadius: '14px',
+    border: '1px solid $border',
+    backgroundColor: '$surface',
+    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
+    color: '$textMain',
+    zIndex: 10001,
+});
+
 const floatDoodle = keyframes({
     '0%': { backgroundPosition: 'center, 0px 0px, 0% 50%' },
     '50%': { backgroundPosition: 'center, 200px 200px, 100% 50%' },
@@ -1340,6 +1355,9 @@ export default function Dashboard() {
     const [mutedConversations, setMutedConversations] = useState([]);
     const [disappearingConversations, setDisappearingConversations] = useState([]);
     const [toastMessage, setToastMessage] = useState(null);
+    const [incomingMessageNotification, setIncomingMessageNotification] = useState(null);
+    const [notificationReply, setNotificationReply] = useState('');
+    const notifiedMessageIdsRef = useRef(new Set());
     const [isSelectingMessages, setIsSelectingMessages] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState([]);
     const [messageSelectionConversationId, setMessageSelectionConversationId] = useState(null);
@@ -1529,9 +1547,14 @@ export default function Dashboard() {
     }, [appSettings]);
 
     const activeConversationIdRef = useRef(activeConversationId);
-    activeConversationIdRef.current = activeConversationId;
     const appSettingsRef = useRef(appSettings);
-    appSettingsRef.current = appSettings;
+    const mutedConversationsRef = useRef(mutedConversations);
+
+    useEffect(() => {
+        activeConversationIdRef.current = activeConversationId;
+        appSettingsRef.current = appSettings;
+        mutedConversationsRef.current = mutedConversations;
+    }, [activeConversationId, appSettings, mutedConversations]);
 
     const handleUpdateProfile = async (updates) => {
         try {
@@ -1753,6 +1776,24 @@ export default function Dashboard() {
                                 userId: currentUid,
                                 messageIds: [incomingMessage._id]
                             });
+                        }
+
+                        const messageId = String(incomingMessage._id || '');
+                        const conversationId = String(incomingMessage.conversationId || '');
+                        if (
+                            messageId &&
+                            !notifiedMessageIdsRef.current.has(messageId) &&
+                            appSettingsRef.current?.messageAlerts !== false &&
+                            activeConversationIdRef.current !== incomingMessage.conversationId &&
+                            !mutedConversationsRef.current.includes(conversationId)
+                        ) {
+                            notifiedMessageIdsRef.current.add(messageId);
+                            if (notifiedMessageIdsRef.current.size > 200) {
+                                const oldestMessageId = notifiedMessageIdsRef.current.values().next().value;
+                                notifiedMessageIdsRef.current.delete(oldestMessageId);
+                            }
+                            setIncomingMessageNotification(incomingMessage);
+                            setNotificationReply('');
                         }
                     }
 
@@ -2042,6 +2083,23 @@ export default function Dashboard() {
         setMessageInput('');
         setReplyingToMessage(null);
         if (inputRef.current) inputRef.current.style.height = '48px';
+    };
+
+    const handleNotificationReply = (e) => {
+        e.preventDefault();
+        const content = notificationReply.trim();
+        if (!content || !socket || !mongoUserId || !incomingMessageNotification) return;
+
+        socket.emit('send_message', {
+            conversationId: incomingMessageNotification.conversationId,
+            senderId: mongoUserId,
+            content,
+            isCodeSnippet: false,
+            language: 'plaintext',
+            replyTo: incomingMessageNotification._id
+        });
+        setIncomingMessageNotification(null);
+        setNotificationReply('');
     };
 
     const handleKeyDown = (e) => {
@@ -5306,6 +5364,61 @@ export default function Dashboard() {
 
                     {toastMessage}
                 </ToastNotification>
+            )}
+
+            {incomingMessageNotification && (
+                <IncomingMessageNotification aria-label="New message notification" aria-live="polite">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ minWidth: 0 }}>
+                            <strong>{incomingMessageNotification.sender?.displayName || 'New message'}</strong>
+                            <div style={{ marginTop: '6px', color: 'var(--colors-textMuted)', overflowWrap: 'anywhere' }}>
+                                {appSettings.showPreviews === false
+                                    ? 'You received a message'
+                                    : incomingMessageNotification.content || 'You sent an attachment'}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Dismiss message notification"
+                            onClick={() => setIncomingMessageNotification(null)}
+                            style={{ background: 'none', border: 0, color: 'var(--colors-textMuted)', cursor: 'pointer', padding: 0 }}
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <form onSubmit={handleNotificationReply} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        <input
+                            aria-label="Reply to message"
+                            value={notificationReply}
+                            onChange={(e) => setNotificationReply(e.target.value)}
+                            placeholder="Write a reply..."
+                            style={{
+                                minWidth: 0,
+                                flex: 1,
+                                padding: '9px 11px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--colors-border)',
+                                background: 'var(--colors-bg)',
+                                color: 'var(--colors-textMain)'
+                            }}
+                        />
+                        <button
+                            type="submit"
+                            disabled={!notificationReply.trim()}
+                            style={{
+                                padding: '0 12px',
+                                border: 0,
+                                borderRadius: '8px',
+                                background: 'var(--colors-accent)',
+                                color: 'white',
+                                cursor: notificationReply.trim() ? 'pointer' : 'not-allowed',
+                                opacity: notificationReply.trim() ? 1 : 0.55
+                            }}
+                        >
+                            Reply
+                        </button>
+                    </form>
+                </IncomingMessageNotification>
             )}
 
             {/* Delete Message Confirmation Modal */}

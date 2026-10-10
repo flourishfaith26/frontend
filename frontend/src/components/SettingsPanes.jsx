@@ -514,7 +514,7 @@ export const NotificationsPane = ({ onBack, settings, updateSetting }) => (
                     <IconWrapper><Bell size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Message notifications</SettingLabel>
-                        <SettingDescription>Show notifications for new messages</SettingDescription>
+                        <SettingDescription>Show notifications for new messages and reply directly from them</SettingDescription>
                     </SettingText>
                     <Toggle checked={settings.messageAlerts} onChange={(e) => updateSetting('messageAlerts', e.target.checked)} />
                 </SettingRow>
