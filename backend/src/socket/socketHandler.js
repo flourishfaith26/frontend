@@ -145,6 +145,20 @@ export const setupSocket = (io) => {
                 }
 
                 const deletedIds = ownedMessages.map(message => String(message._id));
+                const deletionEvent = {
+                    messageIds: deletedIds,
+                    conversationId: String(conversationId),
+                    senderId: String(senderId)
+                };
+
+                // Emit immediately for zero-latency UI update across all clients
+                io.to(conversationId).emit('messages_deleted_for_everyone', deletionEvent);
+                conversation.participants.forEach(pId => {
+                    io.to(getUserRoom(pId)).emit('messages_deleted_for_everyone', deletionEvent);
+                });
+                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds });
+
+                // Perform heavy DB operations in the background
                 await Message.updateMany(
                     { _id: { $in: deletedIds }, conversationId, sender: senderId },
                     {
@@ -160,17 +174,6 @@ export const setupSocket = (io) => {
                         $unset: { replyTo: 1 }
                     }
                 );
-
-                const deletionEvent = {
-                    messageIds: deletedIds,
-                    conversationId: String(conversationId),
-                    senderId: String(senderId)
-                };
-                io.to(conversationId).emit('messages_deleted_for_everyone', deletionEvent);
-                conversation.participants.forEach(pId => {
-                    io.to(getUserRoom(pId)).emit('messages_deleted_for_everyone', deletionEvent);
-                });
-                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds });
             } catch (error) {
                 console.error('Error deleting messages for everyone:', error);
                 if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message deletion failed' });
@@ -185,17 +188,16 @@ export const setupSocket = (io) => {
                 }
 
                 const normalizedIds = messageIds.map(String);
-                const result = await Message.updateMany(
+                
+                // Optimistically acknowledge and emit back to this socket to update their local state immediately
+                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds: normalizedIds });
+                socket.emit('messages_deleted_for_me', normalizedIds);
+
+                // Perform heavy DB operations in the background
+                await Message.updateMany(
                     { _id: { $in: normalizedIds }, conversationId },
                     { $addToSet: { deletedFor: userId } }
                 );
-                // We emit back only to this socket to update their local state immediately
-                if (result.matchedCount === 0) {
-                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'The selected message could not be found' });
-                    return;
-                }
-                socket.emit('messages_deleted_for_me', normalizedIds);
-                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds: normalizedIds });
             } catch (error) {
                 console.error('Error deleting messages for me:', error);
                 if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message deletion failed' });
