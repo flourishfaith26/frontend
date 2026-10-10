@@ -43,7 +43,7 @@ export const setupSocket = (io) => {
         });
 
         // 3. Message Handling
-        socket.on('send_message', async (messageData) => {
+        socket.on('send_message', async (messageData, acknowledge) => {
             try {
                 const sequence = await getNextMessageSequence(messageData.conversationId);
                 const newMessage = new Message({
@@ -72,16 +72,21 @@ export const setupSocket = (io) => {
                     $pull: { deletedFor: messageData.senderId }
                 }, { new: true });
 
-                io.to(messageData.conversationId).emit('receive_message', newMessage);
+                const messageToEmit = newMessage.toObject();
+                if (messageData.clientMessageId) messageToEmit.clientMessageId = messageData.clientMessageId;
+
+                io.to(messageData.conversationId).emit('receive_message', messageToEmit);
 
                 // Also notify every participant via their personal user room so sidebar and delivery receipts update
                 if (conv?.participants) {
                     conv.participants.forEach(pId => {
-                        io.to(getUserRoom(pId)).emit('receive_message', newMessage);
+                        io.to(getUserRoom(pId)).emit('receive_message', messageToEmit);
                     });
                 }
+                if (typeof acknowledge === 'function') acknowledge({ ok: true });
             } catch (error) {
                 console.error('Error handling socket message:', error);
+                if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message could not be sent' });
             }
         });
 

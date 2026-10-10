@@ -514,9 +514,22 @@ export const NotificationsPane = ({ onBack, settings, updateSetting }) => (
                     <IconWrapper><Bell size={20}/></IconWrapper>
                     <SettingText>
                         <SettingLabel>Message notifications</SettingLabel>
-                        <SettingDescription>Show notifications for new messages and reply directly from them</SettingDescription>
+                        <SettingDescription>Show message notifications, including when the app is in the background.</SettingDescription>
                     </SettingText>
-                    <Toggle checked={settings.messageAlerts} onChange={(e) => updateSetting('messageAlerts', e.target.checked)} />
+                    <Toggle
+                        checked={settings.messageAlerts}
+                        onChange={async (e) => {
+                            const enabled = e.target.checked;
+                            if (enabled && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                                try {
+                                    await Notification.requestPermission();
+                                } catch (error) {
+                                    console.error('Could not request notification permission:', error);
+                                }
+                            }
+                            updateSetting('messageAlerts', enabled);
+                        }}
+                    />
                 </SettingRow>
                 <SettingRow>
                     <IconWrapper><Smartphone size={20}/></IconWrapper>

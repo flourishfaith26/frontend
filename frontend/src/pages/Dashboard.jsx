@@ -1208,6 +1208,8 @@ const formatMessageClock = (dateString) => {
 };
 
 const compareMessages = (a, b) => {
+    if (Boolean(a.pending) !== Boolean(b.pending)) return a.pending ? 1 : -1;
+
     const aHasSequence = Number.isFinite(a.sequence);
     const bHasSequence = Number.isFinite(b.sequence);
 
@@ -1470,6 +1472,18 @@ export default function Dashboard() {
     }, [mediaViewer]);
     const [activeTab, setActiveTab] = useState('chats'); // 'chats', 'status', 'settings'
     const [activeSettingTab, setActiveSettingTab] = useState(null);
+    useEffect(() => {
+        if (!('serviceWorker' in navigator)) return undefined;
+
+        const handleServiceWorkerMessage = (event) => {
+            if (event.data?.type !== 'OPEN_CONVERSATION' || !event.data.conversationId) return;
+            setActiveTab('chats');
+            setActiveConversationId(String(event.data.conversationId));
+        };
+
+        navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+        return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+    }, []);
     
     // Handle mobile back button
     useEffect(() => {
@@ -1527,8 +1541,7 @@ export default function Dashboard() {
 
     // App Settings State
     const [appSettings, setAppSettings] = useState(() => {
-        const saved = localStorage.getItem('appSettings');
-        return saved ? JSON.parse(saved) : {
+        const defaults = {
             securityNotifications: false,
             lastSeen: 'everyone',
             profilePhoto: 'everyone',
@@ -1540,6 +1553,8 @@ export default function Dashboard() {
             sounds: true,
             richIntegrations: true
         };
+        const saved = localStorage.getItem('appSettings');
+        return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
     });
 
     useEffect(() => {
@@ -1613,6 +1628,7 @@ export default function Dashboard() {
     const [connectionError, setConnectionError] = useState(null);
 
     const inputRef = useRef(null);
+    const clientMessageSequenceRef = useRef(0);
     const fileInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const messageListRef = useRef(null);
@@ -1706,6 +1722,17 @@ export default function Dashboard() {
 
                 // Handle Shared Profile Links (?chatWith=USER_ID)
                 const urlParams = new URLSearchParams(window.location.search);
+                const notificationConversationId = urlParams.get('conversationId');
+                if (initialConversations.some(conversation => String(conversation._id) === notificationConversationId)) {
+                    setActiveConversationId(notificationConversationId);
+                    urlParams.delete('conversationId');
+                    const remainingQuery = urlParams.toString();
+                    window.history.replaceState(
+                        {},
+                        document.title,
+                        `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}`
+                    );
+                }
                 const chatWithId = urlParams.get('chatWith');
                 if (chatWithId && chatWithId !== mongoUser._id) {
                     try {
@@ -1783,8 +1810,7 @@ export default function Dashboard() {
                         if (
                             messageId &&
                             !notifiedMessageIdsRef.current.has(messageId) &&
-                            appSettingsRef.current?.messageAlerts !== false &&
-                            activeConversationIdRef.current !== incomingMessage.conversationId &&
+                            appSettingsRef.current?.messageAlerts === true &&
                             !mutedConversationsRef.current.includes(conversationId)
                         ) {
                             notifiedMessageIdsRef.current.add(messageId);
@@ -1792,13 +1818,45 @@ export default function Dashboard() {
                                 const oldestMessageId = notifiedMessageIdsRef.current.values().next().value;
                                 notifiedMessageIdsRef.current.delete(oldestMessageId);
                             }
-                            setIncomingMessageNotification(incomingMessage);
-                            setNotificationReply('');
+                            const isConversationOpen = String(activeConversationIdRef.current) === conversationId;
+                            if (!isConversationOpen) {
+                                setIncomingMessageNotification(incomingMessage);
+                                setNotificationReply('');
+                            }
+
+                            if (
+                                (!isConversationOpen || document.visibilityState !== 'visible') &&
+                                typeof Notification !== 'undefined' &&
+                                Notification.permission === 'granted'
+                            ) {
+                                const notificationOptions = {
+                                    body: appSettingsRef.current?.showPreviews === false
+                                        ? 'You received a message'
+                                        : incomingMessage.content || 'You sent an attachment',
+                                    icon: '/favicon.svg',
+                                    tag: `message-${messageId}`,
+                                    data: { conversationId }
+                                };
+                                const title = incomingMessage.sender?.displayName || 'New message';
+                                const showNotification = 'serviceWorker' in navigator
+                                    ? navigator.serviceWorker.ready.then(registration => registration.showNotification(title, notificationOptions))
+                                    : Promise.resolve(new Notification(title, notificationOptions));
+                                showNotification.catch(error => console.error('Could not show message notification:', error));
+                            }
                         }
                     }
 
                     setMessages((prev) => {
-                        if (prev.some(msg => String(msg._id) === String(incomingMessage._id))) return prev;
+                        if (String(activeConversationIdRef.current) !== String(incomingMessage.conversationId)) return prev;
+                        const existingIndex = prev.findIndex(msg =>
+                            String(msg._id) === String(incomingMessage._id) ||
+                            (incomingMessage.clientMessageId && msg.clientMessageId === incomingMessage.clientMessageId)
+                        );
+                        if (existingIndex !== -1) {
+                            const nextMessages = [...prev];
+                            nextMessages[existingIndex] = incomingMessage;
+                            return nextMessages;
+                        }
                         return [...prev, incomingMessage];
                     });
 
@@ -1906,7 +1964,21 @@ export default function Dashboard() {
                         headers: { Authorization: `Bearer ${token}` }
                     });
                     const history = await res.json();
-                    setMessages(history);
+                    if (!Array.isArray(history)) throw new Error('Message history returned invalid data');
+                    setMessages(previousMessages => {
+                        const currentConversationMessages = previousMessages.filter(message =>
+                            String(message.conversationId) === String(activeConversationId)
+                        );
+                        const mergedMessages = [...history];
+                        currentConversationMessages.forEach(message => {
+                            const matchingIndex = mergedMessages.findIndex(historyMessage =>
+                                String(historyMessage._id) === String(message._id) ||
+                                (message.clientMessageId && historyMessage.clientMessageId === message.clientMessageId)
+                            );
+                            if (matchingIndex === -1) mergedMessages.push(message);
+                        });
+                        return mergedMessages;
+                    });
                 } catch (error) {
                     console.error('Failed to fetch messages:', error);
                 }
@@ -2051,6 +2123,38 @@ export default function Dashboard() {
         e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
     };
 
+    const sendMessage = (payload) => {
+        if (!socket || !mongoUserId || !payload?.conversationId) return;
+
+        const clientMessageId = `pending-${++clientMessageSequenceRef.current}`;
+        const optimisticMessage = {
+            ...payload,
+            _id: clientMessageId,
+            clientMessageId,
+            conversationId: String(payload.conversationId),
+            sender: {
+                _id: mongoUserId,
+                displayName: currentUserData?.displayName || user?.name || 'You',
+                avatarUrl: currentUserData?.avatarUrl || user?.picture
+            },
+            createdAt: new Date().toISOString(),
+            pending: true
+        };
+        setMessages(previous => [...previous, optimisticMessage]);
+
+        socket.timeout(15000).emit(
+            'send_message',
+            { ...payload, clientMessageId },
+            (error, response) => {
+                if (error || !response?.ok) {
+                    setMessages(previous => previous.filter(message => message.clientMessageId !== clientMessageId));
+                    console.error('Message send failed:', error || response?.error || 'Unknown socket error');
+                    showToast('Message could not be sent. Please try again.');
+                }
+            }
+        );
+    };
+
     const handleSendMessage = (e) => {
         e.preventDefault();
         const text = messageInput.trim();
@@ -2078,7 +2182,7 @@ export default function Dashboard() {
             replyTo: replyingToMessage ? replyingToMessage._id : undefined
         };
 
-        socket.emit('send_message', messagePayload);
+        sendMessage(messagePayload);
 
         setMessageInput('');
         setReplyingToMessage(null);
@@ -2090,7 +2194,7 @@ export default function Dashboard() {
         const content = notificationReply.trim();
         if (!content || !socket || !mongoUserId || !incomingMessageNotification) return;
 
-        socket.emit('send_message', {
+        sendMessage({
             conversationId: incomingMessageNotification.conversationId,
             senderId: mongoUserId,
             content,
@@ -2337,7 +2441,7 @@ export default function Dashboard() {
             attachmentType: forwardMessageData.attachmentType || ''
         };
 
-        socket.emit('send_message', payload);
+        sendMessage(payload);
         setForwardMessageData(null);
     };
 
@@ -2452,7 +2556,7 @@ export default function Dashboard() {
                 language: 'plaintext'
             };
 
-            socket.emit('send_message', messagePayload);
+            sendMessage(messagePayload);
         } catch (error) {
             console.error('Upload Error:', error);
             alert('File upload failed. Please try again.');
@@ -2514,7 +2618,7 @@ export default function Dashboard() {
                         language: 'plaintext'
                     };
 
-                    socket.emit('send_message', messagePayload);
+                    sendMessage(messagePayload);
                 } catch (error) {
                     console.error('Upload Audio Error:', error);
                     alert('Voice note upload failed. Please try again.');
@@ -4146,7 +4250,7 @@ export default function Dashboard() {
                                         mongoUserId={mongoUserId}
                                         onClose={() => setCommunityTab('chat')}
                                         onSendToChat={(dataUrl) => {
-                                            socket.emit('send_message', {
+                                            sendMessage({
                                                 conversationId: activeConversationId,
                                                 senderId: mongoUserId,
                                                 content: dataUrl,
@@ -4640,7 +4744,7 @@ export default function Dashboard() {
                     mongoUserId={mongoUserId}
                     onClose={() => setIsWhiteboardOpen(false)}
                     onSendToChat={(dataUrl) => {
-                        socket.emit('send_message', {
+                        sendMessage({
                             conversationId: activeConversationId,
                             senderId: mongoUserId,
                             content: dataUrl,
