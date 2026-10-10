@@ -1367,7 +1367,7 @@ export default function Dashboard() {
     const [isChatsSelectionMode, setIsChatsSelectionMode] = useState(false);
     const [selectedCallLogs, setSelectedCallLogs] = useState([]);
     const [isCallLogsSelectionMode, setIsCallLogsSelectionMode] = useState(false);
-    const [deleteMessagePrompt, setDeleteMessagePrompt] = useState({ visible: false, messageIds: [] });
+    const [deleteMessagePrompt, setDeleteMessagePrompt] = useState({ visible: false, conversationId: null, messageIds: [] });
 
     useEffect(() => {
         if (toastMessage) {
@@ -1386,10 +1386,12 @@ export default function Dashboard() {
 
     const selectMessage = (messageId) => {
         setIsSelectingMessages(true);
-        setMessageSelectionConversationId(activeConversationId);
-        setSelectedMessages(previous => messageSelectionConversationId === activeConversationId
-            ? (previous.includes(messageId) ? previous : [...previous, messageId])
-            : [messageId]);
+        if (messageSelectionConversationId !== activeConversationId) {
+            setMessageSelectionConversationId(activeConversationId);
+            setSelectedMessages([messageId]);
+            return;
+        }
+        setSelectedMessages(previous => previous.includes(messageId) ? previous : [...previous, messageId]);
     };
     const toggleMessageSelection = (messageId) => {
         if (messageSelectionConversationId !== activeConversationId) {
@@ -1898,11 +1900,13 @@ export default function Dashboard() {
                 });
 
                 newSocket.on('messages_deleted_for_everyone', (deletedMsgIds) => {
-                    setMessages(prev => prev.filter(msg => !deletedMsgIds.includes(msg._id)));
+                    const deletedIds = new Set(deletedMsgIds.map(String));
+                    setMessages(prev => prev.filter(msg => !deletedIds.has(String(msg._id))));
                 });
 
                 newSocket.on('messages_deleted_for_me', (deletedMsgIds) => {
-                    setMessages(prev => prev.filter(msg => !deletedMsgIds.includes(msg._id)));
+                    const deletedIds = new Set(deletedMsgIds.map(String));
+                    setMessages(prev => prev.filter(msg => !deletedIds.has(String(msg._id))));
                 });
 
                 newSocket.on('conversation_deleted', (deletedConvId) => {
@@ -2301,39 +2305,61 @@ export default function Dashboard() {
     };
 
     const confirmDeleteForMe = () => {
-        if (!socket || !activeConversationId || !deleteMessagePrompt.messageIds.length) return;
+        const { conversationId, messageIds } = deleteMessagePrompt;
+        if (!socket || !conversationId || !messageIds.length) return;
         socket.emit('delete_message_for_me', { 
-            messageIds: deleteMessagePrompt.messageIds, 
-            conversationId: activeConversationId,
+            messageIds,
+            conversationId,
             userId: mongoUserId
         });
-        setMessages(prev => prev.filter(msg => !deleteMessagePrompt.messageIds.includes(msg._id)));
-        setDeleteMessagePrompt({ visible: false, messageIds: [] });
+        const deletedIds = new Set(messageIds.map(String));
+        setMessages(prev => prev.filter(msg =>
+            String(msg.conversationId) !== String(conversationId) || !deletedIds.has(String(msg._id))
+        ));
+        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
         cancelMessageSelection();
     };
 
     const confirmDeleteForEveryone = () => {
-        if (!socket || !activeConversationId || !deleteMessagePrompt.messageIds.length) return;
+        const { conversationId, messageIds } = deleteMessagePrompt;
+        if (!socket || !conversationId || !messageIds.length) return;
         socket.emit('delete_message_for_everyone', { 
-            messageIds: deleteMessagePrompt.messageIds, 
-            conversationId: activeConversationId 
+            messageIds,
+            conversationId
         });
-        setDeleteMessagePrompt({ visible: false, messageIds: [] });
+        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
         cancelMessageSelection();
     };
 
-    const deleteMessage = (msgId) => {
-        setDeleteMessagePrompt({ visible: true, messageIds: [msgId] });
+    const deleteMessage = (message) => {
+        if (!message?._id || message.pending) {
+            showToast('Wait for the message to finish sending before deleting it');
+            return;
+        }
+        setDeleteMessagePrompt({
+            visible: true,
+            conversationId: String(message.conversationId || activeConversationId),
+            messageIds: [String(message._id)]
+        });
     };
 
     const deleteSelectedMessages = () => {
-        const selected = messages.filter(message => selectedMessages.includes(message._id || message.createdAt));
-        const deletable = selected.filter(message => message._id);
+        const conversationId = String(activeConversationId || '');
+        const selectedIds = new Set(selectedMessages.map(String));
+        const selected = messages.filter(message =>
+            String(message.conversationId) === conversationId &&
+            selectedIds.has(String(message._id || message.createdAt))
+        );
+        const deletable = selected.filter(message => message._id && !message.pending);
         if (!deletable.length) {
             showToast('Selected messages could not be deleted');
             return;
         }
-        setDeleteMessagePrompt({ visible: true, messageIds: deletable.map(m => m._id) });
+        setDeleteMessagePrompt({
+            visible: true,
+            conversationId,
+            messageIds: deletable.map(message => String(message._id))
+        });
     };
 
     const deleteSelectedChats = () => {
@@ -5373,7 +5399,10 @@ export default function Dashboard() {
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4l-1.41 1.41L15.17 10H4v2h11.17l-4.58 4.59L12 18l7-7z"></path></svg>
                                 Forward Message
                             </ContextMenuItem>
-                            <ContextMenuItem onClick={() => deleteMessage(contextMenu.message._id)} style={{ color: '#ef4444' }}>
+                            <ContextMenuItem onClick={() => {
+                                deleteMessage(contextMenu.message);
+                                setContextMenu({ ...contextMenu, visible: false });
+                            }} style={{ color: '#ef4444' }}>
                                 <Trash2 size={16} />
                                 Delete Message
                             </ContextMenuItem>
@@ -5527,7 +5556,7 @@ export default function Dashboard() {
 
             {/* Delete Message Confirmation Modal */}
             {deleteMessagePrompt.visible && (
-                <ModalOverlay onClick={() => setDeleteMessagePrompt({ visible: false, messageIds: [] })} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
+                <ModalOverlay onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] })} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
                     <ModalContent onClick={e => e.stopPropagation()} style={{ 
                         maxWidth: '400px', 
                         padding: '32px', 
@@ -5567,7 +5596,7 @@ export default function Dashboard() {
                             </Button>
                             <Button 
                                 variant="outline" 
-                                onClick={() => setDeleteMessagePrompt({ visible: false, messageIds: [] })}
+                                onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] })}
                                 style={{ padding: '14px', borderRadius: '12px', fontWeight: '500', fontSize: '1rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}
                             >
                                 Cancel
