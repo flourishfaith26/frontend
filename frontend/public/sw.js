@@ -9,7 +9,26 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const conversationId = event.notification.data?.conversationId;
+  const messageId = event.notification.tag?.replace('message-', '');
+  
   if (!conversationId) return;
+
+  if (event.action === 'reply' && event.reply) {
+    event.waitUntil((async () => {
+      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // Find an active window client to handle the reply emit
+      for (const client of windowClients) {
+        client.postMessage({ 
+          type: 'NOTIFICATION_REPLY', 
+          conversationId, 
+          text: event.reply, 
+          messageId 
+        });
+        return; 
+      }
+    })());
+    return;
+  }
 
   event.waitUntil((async () => {
     const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

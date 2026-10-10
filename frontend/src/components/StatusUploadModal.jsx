@@ -159,8 +159,17 @@ const StatusUploadModal = ({ onClose, onUpload, BACKEND_URL, getAccessTokenSilen
                         autoFocus
                         style={{
                             background: 'transparent', border: 'none', color: '#fff',
-                            fontSize: '2.5rem', textAlign: 'center', width: '80%', height: '50%',
-                            resize: 'none', outline: 'none', fontFamily: 'inherit'
+                            fontSize: textContext.length > 150 ? '1.25rem' : textContext.length > 70 ? '1.75rem' : '2.5rem', 
+                            textAlign: 'center', 
+                            width: 'calc(100% - 32px)', 
+                            maxWidth: '700px',
+                            height: '60%',
+                            padding: '0 16px',
+                            boxSizing: 'border-box',
+                            resize: 'none', 
+                            outline: 'none', 
+                            fontFamily: 'inherit',
+                            transition: 'font-size 0.2s ease'
                         }}
                     />
                 ) : (

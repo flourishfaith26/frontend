@@ -462,19 +462,31 @@ const ToastNotification = styled('div', {
     },
 });
 
+const slideInRight = keyframes({
+    from: { transform: 'translateX(120%)', opacity: 0 },
+    to: { transform: 'translateX(0)', opacity: 1 },
+});
+
 const IncomingMessageNotification = styled('section', {
     position: 'fixed',
-    top: '16px',
-    right: '16px',
-    width: 'min(360px, calc(100vw - 32px))',
+    top: '24px',
+    right: '24px',
+    width: 'min(380px, calc(100vw - 32px))',
     boxSizing: 'border-box',
     padding: '16px',
-    borderRadius: '14px',
-    border: '1px solid $border',
-    backgroundColor: '$surface',
-    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
-    color: '$textMain',
+    borderRadius: '16px',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(32, 44, 51, 0.95)', // WhatsApp dark theme native color
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 10px 40px -10px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.3)',
+    color: '#e9edef',
     zIndex: 10001,
+    animation: `${slideInRight} 0.4s cubic-bezier(0.16, 1, 0.3, 1)`,
+    '@media (max-width: 768px)': {
+        top: '16px',
+        right: '16px',
+        borderRadius: '12px',
+    }
 });
 
 const floatDoodle = keyframes({
@@ -614,6 +626,7 @@ const ContextMenuItem = styled('div', {
     alignItems: 'center',
     gap: '12px',
     borderRadius: '10px',
+    whiteSpace: 'nowrap',
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     '&:hover': {
         backgroundColor: 'rgba(6, 182, 212, 0.15)',
@@ -1462,6 +1475,33 @@ export default function Dashboard() {
             : [...previous, itemId]);
     };
 
+    // Service Worker message listener for Native OS Notification Replies
+    useEffect(() => {
+        const handleServiceWorkerMessage = (event) => {
+            if (event.data && event.data.type === 'NOTIFICATION_REPLY') {
+                const { conversationId, text, messageId } = event.data;
+                if (socket && mongoUserId) {
+                    const messageData = {
+                        sender: mongoUserId,
+                        conversationId,
+                        content: text,
+                        replyTo: messageId
+                    };
+                    socket.emit('send_message', messageData);
+                }
+            }
+        };
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+        }
+        return () => {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+            }
+        };
+    }, [socket, mongoUserId]);
+
     const selectMessage = (messageId) => {
         setIsSelectingMessages(true);
         if (messageSelectionConversationId !== activeConversationId) {
@@ -1899,15 +1939,17 @@ export default function Dashboard() {
                                 notifiedMessageIdsRef.current.delete(oldestMessageId);
                             }
                             const isConversationOpen = String(activeConversationIdRef.current) === conversationId;
-                            if (!isConversationOpen) {
+                            
+                            const nativeNotificationsEnabled = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+                            if (!isConversationOpen && !nativeNotificationsEnabled) {
                                 setIncomingMessageNotification(incomingMessage);
                                 setNotificationReply('');
                             }
 
                             if (
                                 (!isConversationOpen || document.visibilityState !== 'visible') &&
-                                typeof Notification !== 'undefined' &&
-                                Notification.permission === 'granted'
+                                nativeNotificationsEnabled
                             ) {
                                 const notificationOptions = {
                                     body: appSettingsRef.current?.showPreviews === false
@@ -1915,7 +1957,15 @@ export default function Dashboard() {
                                         : incomingMessage.content || 'You sent an attachment',
                                     icon: '/favicon.svg',
                                     tag: `message-${messageId}`,
-                                    data: { conversationId }
+                                    data: { conversationId },
+                                    actions: [
+                                        {
+                                            action: 'reply',
+                                            title: 'Reply',
+                                            type: 'text',
+                                            placeholder: 'Write a reply...'
+                                        }
+                                    ]
                                 };
                                 const title = incomingMessage.sender?.displayName || 'New message';
                                 const showNotification = 'serviceWorker' in navigator
@@ -2309,12 +2359,39 @@ export default function Dashboard() {
 
     const handleContextMenu = (e, type, item) => {
         if (e.preventDefault) e.preventDefault();
+        
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        
+        // Fallback if clientX/Y are not available (e.g., some touch events)
+        if (clientX === undefined && e.touches?.length) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (clientX === undefined) {
+            clientX = e.pageX;
+            clientY = e.pageY;
+        }
+
+        const menuWidth = 240; // Approximate width including padding
+        const menuHeight = 320; // Approximate max height
+
+        let x = clientX;
+        let y = clientY;
+
+        if (x + menuWidth > window.innerWidth) {
+            x = window.innerWidth - menuWidth - 8;
+        }
+        if (y + menuHeight > window.innerHeight) {
+            y = Math.max(8, window.innerHeight - menuHeight - 8);
+        }
+
         setContextMenu({
             visible: true,
-            x: e.pageX,
-            y: e.pageY,
+            x,
+            y,
             message: type === 'message' ? item : null,
-            callLog: type === 'callLog' ? item : null
+            callLog: type === 'callLog' ? item : null,
+            conversation: type === 'conversation' ? item : null
         });
     };
 
@@ -5638,10 +5715,26 @@ export default function Dashboard() {
 
             {incomingMessageNotification && (
                 <IncomingMessageNotification aria-label="New message notification" aria-live="polite">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                        <div style={{ minWidth: 0 }}>
-                            <strong>{incomingMessageNotification.sender?.displayName || 'New message'}</strong>
-                            <div style={{ marginTop: '6px', color: 'var(--colors-textMuted)', overflowWrap: 'anywhere' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                        {incomingMessageNotification.sender?.avatarUrl ? (
+                            <img 
+                                src={incomingMessageNotification.sender.avatarUrl} 
+                                alt="" 
+                                style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} 
+                            />
+                        ) : (
+                            <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
+                                {(incomingMessageNotification.sender?.displayName || 'N')[0].toUpperCase()}
+                            </div>
+                        )}
+                        <div style={{ minWidth: 0, flex: 1, marginTop: '2px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong style={{ fontSize: '1rem', color: '#e9edef', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {incomingMessageNotification.sender?.displayName || 'New message'}
+                                </strong>
+                                <span style={{ fontSize: '0.75rem', color: '#8696a0' }}>Now</span>
+                            </div>
+                            <div style={{ marginTop: '4px', color: '#8696a0', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {appSettings.showPreviews === false
                                     ? 'You received a message'
                                     : incomingMessageNotification.content || 'You sent an attachment'}
@@ -5651,41 +5744,54 @@ export default function Dashboard() {
                             type="button"
                             aria-label="Dismiss message notification"
                             onClick={() => setIncomingMessageNotification(null)}
-                            style={{ background: 'none', border: 0, color: 'var(--colors-textMuted)', cursor: 'pointer', padding: 0 }}
+                            style={{ background: 'none', border: 0, color: '#8696a0', cursor: 'pointer', padding: '4px', marginLeft: '-4px', transition: 'color 0.2s' }}
+                            onMouseOver={e => e.currentTarget.style.color = '#e9edef'}
+                            onMouseOut={e => e.currentTarget.style.color = '#8696a0'}
                         >
                             <X size={18} />
                         </button>
                     </div>
-                    <form onSubmit={handleNotificationReply} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <form onSubmit={handleNotificationReply} style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                         <input
                             aria-label="Reply to message"
                             value={notificationReply}
                             onChange={(e) => setNotificationReply(e.target.value)}
-                            placeholder="Write a reply..."
+                            placeholder="Reply..."
+                            autoFocus
                             style={{
                                 minWidth: 0,
                                 flex: 1,
-                                padding: '9px 11px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--colors-border)',
-                                background: 'var(--colors-bg)',
-                                color: 'var(--colors-textMain)'
+                                padding: '10px 14px',
+                                borderRadius: '20px',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                color: '#e9edef',
+                                outline: 'none',
+                                fontSize: '0.95rem',
+                                transition: 'all 0.2s',
                             }}
+                            onFocus={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.borderColor = '#00a884'; }}
+                            onBlur={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'; }}
                         />
                         <button
                             type="submit"
                             disabled={!notificationReply.trim()}
                             style={{
-                                padding: '0 12px',
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '50%',
                                 border: 0,
-                                borderRadius: '8px',
-                                background: 'var(--colors-accent)',
-                                color: 'white',
-                                cursor: notificationReply.trim() ? 'pointer' : 'not-allowed',
-                                opacity: notificationReply.trim() ? 1 : 0.55
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: notificationReply.trim() ? '#00a884' : 'rgba(255, 255, 255, 0.1)',
+                                color: notificationReply.trim() ? '#111b21' : '#8696a0',
+                                cursor: notificationReply.trim() ? 'pointer' : 'default',
+                                transition: 'all 0.2s',
+                                transform: notificationReply.trim() ? 'scale(1)' : 'scale(0.95)',
                             }}
                         >
-                            Reply
+                            <SendIcon />
                         </button>
                     </form>
                 </IncomingMessageNotification>
@@ -5695,53 +5801,58 @@ export default function Dashboard() {
             {deleteMessagePrompt.visible && (
                 <ModalOverlay onClick={() => {
                     if (!isDeletingMessages) setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false });
-                }} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
+                }} style={{ zIndex: 9999, backdropFilter: 'blur(4px)', backgroundColor: 'rgba(11, 20, 26, 0.85)' }}>
                     <ModalContent onClick={e => e.stopPropagation()} style={{ 
-                        maxWidth: '400px', 
-                        padding: '32px', 
-                        alignItems: 'center', 
+                        maxWidth: '360px', 
+                        width: '100%',
+                        padding: '24px', 
+                        display: 'flex',
+                        flexDirection: 'column',
                         gap: '16px',
                         background: 'var(--colors-surface)',
-                        border: '1px solid var(--colors-border)',
-                        borderRadius: '24px',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        borderRadius: '16px',
+                        boxShadow: '0 10px 40px -10px rgba(0, 0, 0, 0.5)',
+                        animation: '0.2s cubic-bezier(0.16, 1, 0.3, 1) 0s 1 normal none running toastEnter'
                     }}>
-                        <div style={{ 
-                            width: '64px', height: '64px', borderRadius: '50%', 
-                            background: 'rgba(239, 68, 68, 0.1)', 
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', 
-                            marginBottom: '8px'
-                        }}>
-                            <Trash2 size={32} />
+                        <div>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--colors-textMain)', margin: '0 0 8px 0' }}>Delete message?</h2>
+                            <p style={{ color: 'var(--colors-textMuted)', fontSize: '0.9rem', margin: 0, lineHeight: 1.4 }}>
+                                {deleteMessagePrompt.allowDeleteForEveryone
+                                    ? 'You can delete this message for everyone, or just for yourself.'
+                                    : 'This message will be deleted for you.'}
+                            </p>
                         </div>
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--colors-textMain)', margin: 0, textAlign: 'center' }}>Delete message?</h2>
-                        <p style={{ color: 'var(--colors-textMuted)', fontSize: '0.95rem', textAlign: 'center', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-                            {deleteMessagePrompt.allowDeleteForEveryone
-                                ? 'You can delete this message for everyone, or just for yourself.'
-                                : 'This message will only be deleted for you.'}
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-                            {deleteMessagePrompt.allowDeleteForEveryone && <Button
-                                variant="primary" 
-                                onClick={confirmDeleteForEveryone}
-                                disabled={isDeletingMessages}
-                                style={{ padding: '14px', borderRadius: '12px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: '600', fontSize: '1rem' }}
-                            >
-                                {isDeletingMessages ? 'Deleting…' : 'Delete for everyone'}
-                            </Button>}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', marginTop: '8px' }}>
+                            {deleteMessagePrompt.allowDeleteForEveryone && (
+                                <Button
+                                    variant="primary" 
+                                    onClick={confirmDeleteForEveryone}
+                                    disabled={isDeletingMessages}
+                                    style={{ padding: '12px', borderRadius: '10px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', fontWeight: '600', fontSize: '0.95rem', transition: 'all 0.2s', ...(!isDeletingMessages && { cursor: 'pointer' }) }}
+                                    onMouseOver={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; } }}
+                                    onMouseOut={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'transparent'; } }}
+                                >
+                                    {isDeletingMessages ? 'Deleting…' : 'Delete for everyone'}
+                                </Button>
+                            )}
                             <Button 
                                 variant="outline" 
                                 onClick={confirmDeleteForMe}
                                 disabled={isDeletingMessages}
-                                style={{ padding: '14px', borderRadius: '12px', fontWeight: '600', fontSize: '1rem', border: '1px solid var(--colors-border)', backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}
+                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '600', fontSize: '0.95rem', border: '1px solid var(--colors-border)', backgroundColor: 'transparent', color: 'var(--colors-textMain)', transition: 'all 0.2s' }}
+                                onMouseOver={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; } }}
+                                onMouseOut={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'transparent'; } }}
                             >
-                                Delete for me
+                                {deleteMessagePrompt.allowDeleteForEveryone ? 'Delete for me' : 'Delete'}
                             </Button>
                             <Button 
                                 variant="outline" 
                                 disabled={isDeletingMessages}
                                 onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false })}
-                                style={{ padding: '14px', borderRadius: '12px', fontWeight: '500', fontSize: '1rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}
+                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '500', fontSize: '0.95rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)', marginTop: '4px' }}
+                                onMouseOver={e => e.currentTarget.style.color = 'var(--colors-textMain)'}
+                                onMouseOut={e => e.currentTarget.style.color = 'var(--colors-textMuted)'}
                             >
                                 Cancel
                             </Button>
