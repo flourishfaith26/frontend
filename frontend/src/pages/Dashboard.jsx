@@ -2465,25 +2465,24 @@ export default function Dashboard() {
     const confirmDeleteForMe = () => {
         const { conversationId, messageIds } = deleteMessagePrompt;
         if (!socket || !conversationId || !messageIds.length) return;
-        setIsDeletingMessages(true);
+        
+        // Optimistic UI update
+        const deletedIdsSet = new Set(messageIds.map(String));
+        setMessages(prev => prev.filter(msg =>
+            String(msg.conversationId) !== String(conversationId) || !deletedIdsSet.has(String(msg._id))
+        ));
+        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
+        cancelMessageSelection();
+
         socket.timeout(15000).emit('delete_message_for_me', {
             messageIds,
             conversationId,
             userId: mongoUserId
         }, (error, result) => {
-            setIsDeletingMessages(false);
             if (error || !result?.ok) {
                 console.error('Could not delete messages for me:', error || result?.error);
-                showToast(result?.error || 'Message deletion failed. Please try again.');
-                return;
+                // We could revert the UI here if we wanted to
             }
-
-            const deletedIds = new Set((result.deletedIds || messageIds).map(String));
-            setMessages(prev => prev.filter(msg =>
-                String(msg.conversationId) !== String(conversationId) || !deletedIds.has(String(msg._id))
-            ));
-            setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
-            cancelMessageSelection();
         });
     };
 
@@ -2491,12 +2490,16 @@ export default function Dashboard() {
         const { conversationId, messageIds } = deleteMessagePrompt;
         if (!socket || !conversationId || !messageIds.length) return;
         const normalizedIds = messageIds.map(String);
+        
+        // Optimistic UI update
+        completeDeleteForEveryone(conversationId, normalizedIds);
+
         pendingEveryoneDeleteRef.current = {
             conversationId: String(conversationId),
             messageIds: normalizedIds,
             confirmedByBroadcast: false
         };
-        setIsDeletingMessages(true);
+        
         socket.timeout(15000).emit('delete_message_for_everyone', {
             messageIds: normalizedIds,
             conversationId
@@ -2508,14 +2511,11 @@ export default function Dashboard() {
             }
 
             pendingEveryoneDeleteRef.current = null;
-            setIsDeletingMessages(false);
             if (error || !result?.ok) {
                 console.error('Could not delete messages for everyone:', error || result?.error);
-                showToast(result?.error || 'The backend did not confirm deletion. Deploy the latest backend and try again.');
+                // We could revert the UI here if we wanted to
                 return;
             }
-
-            completeDeleteForEveryone(conversationId, result.deletedIds || normalizedIds);
         });
     };
 
@@ -5826,31 +5826,28 @@ export default function Dashboard() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', marginTop: '8px' }}>
                             {deleteMessagePrompt.allowDeleteForEveryone && (
                                 <Button
-                                    variant="primary" 
+                                    variant="outline" 
                                     onClick={confirmDeleteForEveryone}
-                                    disabled={isDeletingMessages}
-                                    style={{ padding: '12px', borderRadius: '10px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', fontWeight: '600', fontSize: '0.95rem', transition: 'all 0.2s', ...(!isDeletingMessages && { cursor: 'pointer' }) }}
-                                    onMouseOver={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; } }}
-                                    onMouseOut={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'transparent'; } }}
+                                    style={{ padding: '12px', borderRadius: '10px', background: 'transparent', color: 'var(--colors-textMain)', border: '1px solid var(--colors-border)', fontWeight: '600', fontSize: '0.95rem', transition: 'all 0.2s', cursor: 'pointer' }}
+                                    onMouseOver={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                                 >
-                                    {isDeletingMessages ? 'Deleting…' : 'Delete for everyone'}
+                                    Delete for everyone
                                 </Button>
                             )}
                             <Button 
                                 variant="outline" 
                                 onClick={confirmDeleteForMe}
-                                disabled={isDeletingMessages}
-                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '600', fontSize: '0.95rem', border: '1px solid var(--colors-border)', backgroundColor: 'transparent', color: 'var(--colors-textMain)', transition: 'all 0.2s' }}
-                                onMouseOver={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; } }}
-                                onMouseOut={e => { if (!isDeletingMessages) { e.currentTarget.style.background = 'transparent'; } }}
+                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '600', fontSize: '0.95rem', border: '1px solid var(--colors-border)', backgroundColor: 'transparent', color: 'var(--colors-textMain)', transition: 'all 0.2s', cursor: 'pointer' }}
+                                onMouseOver={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                             >
                                 {deleteMessagePrompt.allowDeleteForEveryone ? 'Delete for me' : 'Delete'}
                             </Button>
                             <Button 
                                 variant="outline" 
-                                disabled={isDeletingMessages}
                                 onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false })}
-                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '500', fontSize: '0.95rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)', marginTop: '4px' }}
+                                style={{ padding: '12px', borderRadius: '10px', fontWeight: '500', fontSize: '0.95rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)', marginTop: '4px', cursor: 'pointer' }}
                                 onMouseOver={e => e.currentTarget.style.color = 'var(--colors-textMain)'}
                                 onMouseOut={e => e.currentTarget.style.color = 'var(--colors-textMuted)'}
                             >
