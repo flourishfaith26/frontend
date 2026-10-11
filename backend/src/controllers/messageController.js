@@ -18,7 +18,7 @@ export const getMessages = async (req, res) => {
       .populate('sender', 'displayName avatarUrl')
       .populate({
         path: 'replyTo',
-        select: 'content sender isCodeSnippet caption',
+        select: 'content sender isCodeSnippet caption isDeletedForEveryone',
         populate: { path: 'sender', select: 'displayName' }
       })
       .sort({ sequence: 1, createdAt: 1, _id: 1 });

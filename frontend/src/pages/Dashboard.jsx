@@ -1367,7 +1367,13 @@ export default function Dashboard() {
     const [isChatsSelectionMode, setIsChatsSelectionMode] = useState(false);
     const [selectedCallLogs, setSelectedCallLogs] = useState([]);
     const [isCallLogsSelectionMode, setIsCallLogsSelectionMode] = useState(false);
-    const [deleteMessagePrompt, setDeleteMessagePrompt] = useState({ visible: false, conversationId: null, messageIds: [] });
+    const [deleteMessagePrompt, setDeleteMessagePrompt] = useState({
+        visible: false,
+        conversationId: null,
+        messageIds: [],
+        allowDeleteForEveryone: false
+    });
+    const [isDeletingMessages, setIsDeletingMessages] = useState(false);
 
     useEffect(() => {
         if (toastMessage) {
@@ -1377,6 +1383,47 @@ export default function Dashboard() {
     }, [toastMessage]);
 
     const showToast = (msg) => setToastMessage(msg);
+
+    const applyMessagesDeletedForEveryone = (conversationId, messageIds) => {
+        const deletedIds = new Set(messageIds.map(String));
+        const normalizedConversationId = String(conversationId);
+        setMessages(previous => previous.map(message => {
+            if (
+                String(message.conversationId) !== normalizedConversationId ||
+                !deletedIds.has(String(message._id))
+            ) return message;
+
+            return {
+                ...message,
+                content: '',
+                caption: '',
+                attachmentName: '',
+                attachmentType: '',
+                isCodeSnippet: false,
+                isEdited: false,
+                isDeletedForEveryone: true,
+                replyTo: null
+            };
+        }));
+        setConversations(previous => previous.map(conversation => {
+            if (
+                String(conversation._id) !== normalizedConversationId ||
+                !deletedIds.has(String(conversation.lastMessage?._id))
+            ) return conversation;
+
+            return {
+                ...conversation,
+                lastMessage: {
+                    ...conversation.lastMessage,
+                    content: '',
+                    caption: '',
+                    attachmentName: '',
+                    attachmentType: '',
+                    isDeletedForEveryone: true
+                }
+            };
+        }));
+    };
 
     const toggleSelection = (setSelectedItems, itemId) => {
         setSelectedItems(previous => previous.includes(itemId)
@@ -1899,14 +1946,17 @@ export default function Dashboard() {
                     }));
                 });
 
-                newSocket.on('messages_deleted_for_everyone', (deletedMsgIds) => {
-                    const deletedIds = new Set(deletedMsgIds.map(String));
-                    setMessages(prev => prev.filter(msg => !deletedIds.has(String(msg._id))));
+                newSocket.on('messages_deleted_for_everyone', ({ messageIds, conversationId }) => {
+                    if (!Array.isArray(messageIds) || !conversationId) return;
+                    applyMessagesDeletedForEveryone(conversationId, messageIds);
                 });
 
                 newSocket.on('messages_deleted_for_me', (deletedMsgIds) => {
                     const deletedIds = new Set(deletedMsgIds.map(String));
-                    setMessages(prev => prev.filter(msg => !deletedIds.has(String(msg._id))));
+                    setMessages(prev => prev.filter(msg =>
+                        !deletedIds.has(String(msg._id)) ||
+                        String(msg.conversationId) !== String(activeConversationIdRef.current)
+                    ));
                 });
 
                 newSocket.on('conversation_deleted', (deletedConvId) => {
@@ -2307,28 +2357,47 @@ export default function Dashboard() {
     const confirmDeleteForMe = () => {
         const { conversationId, messageIds } = deleteMessagePrompt;
         if (!socket || !conversationId || !messageIds.length) return;
-        socket.emit('delete_message_for_me', { 
+        setIsDeletingMessages(true);
+        socket.timeout(15000).emit('delete_message_for_me', {
             messageIds,
             conversationId,
             userId: mongoUserId
+        }, (error, result) => {
+            setIsDeletingMessages(false);
+            if (error || !result?.ok) {
+                console.error('Could not delete messages for me:', error || result?.error);
+                showToast(result?.error || 'Message deletion failed. Please try again.');
+                return;
+            }
+
+            const deletedIds = new Set((result.deletedIds || messageIds).map(String));
+            setMessages(prev => prev.filter(msg =>
+                String(msg.conversationId) !== String(conversationId) || !deletedIds.has(String(msg._id))
+            ));
+            setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
+            cancelMessageSelection();
         });
-        const deletedIds = new Set(messageIds.map(String));
-        setMessages(prev => prev.filter(msg =>
-            String(msg.conversationId) !== String(conversationId) || !deletedIds.has(String(msg._id))
-        ));
-        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
-        cancelMessageSelection();
     };
 
     const confirmDeleteForEveryone = () => {
         const { conversationId, messageIds } = deleteMessagePrompt;
         if (!socket || !conversationId || !messageIds.length) return;
-        socket.emit('delete_message_for_everyone', { 
+        setIsDeletingMessages(true);
+        socket.timeout(15000).emit('delete_message_for_everyone', {
             messageIds,
             conversationId
+        }, (error, result) => {
+            setIsDeletingMessages(false);
+            if (error || !result?.ok) {
+                console.error('Could not delete messages for everyone:', error || result?.error);
+                showToast(result?.error || 'Message deletion failed. Please try again.');
+                return;
+            }
+
+            applyMessagesDeletedForEveryone(conversationId, result.deletedIds || messageIds);
+            setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false });
+            cancelMessageSelection();
         });
-        setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] });
-        cancelMessageSelection();
     };
 
     const deleteMessage = (message) => {
@@ -2339,7 +2408,10 @@ export default function Dashboard() {
         setDeleteMessagePrompt({
             visible: true,
             conversationId: String(message.conversationId || activeConversationId),
-            messageIds: [String(message._id)]
+            messageIds: [String(message._id)],
+            allowDeleteForEveryone:
+                String(message.sender?._id || message.sender) === String(mongoUserId) &&
+                message.isDeletedForEveryone !== true
         });
     };
 
@@ -2358,7 +2430,11 @@ export default function Dashboard() {
         setDeleteMessagePrompt({
             visible: true,
             conversationId,
-            messageIds: deletable.map(message => String(message._id))
+            messageIds: deletable.map(message => String(message._id)),
+            allowDeleteForEveryone: deletable.every(message =>
+                String(message.sender?._id || message.sender) === String(mongoUserId) &&
+                message.isDeletedForEveryone !== true
+            )
         });
     };
 
@@ -3093,8 +3169,10 @@ export default function Dashboard() {
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: '0.85rem', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', fontWeight: conv.unreadCount > 0 ? '500' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                     {conv.lastMessage
-                                                        ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
-                                                            (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
+                                                        ? (conv.lastMessage.isDeletedForEveryone
+                                                            ? 'This message was deleted'
+                                                            : ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
+                                                                (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content)))
                                                         : 'No messages yet'}
                                                 </span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3283,8 +3361,10 @@ export default function Dashboard() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ fontSize: '0.85rem', color: conv.unreadCount > 0 ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', fontWeight: conv.unreadCount > 0 ? '500' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {conv.lastMessage
-                                                    ? ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
-                                                        (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content))
+                                                    ? (conv.lastMessage.isDeletedForEveryone
+                                                        ? 'This message was deleted'
+                                                        : ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
+                                                            (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content)))
                                                     : 'No messages yet'}
                                             </span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3854,11 +3934,11 @@ export default function Dashboard() {
                                                     const senderId = String(msg.sender?._id || msg.sender || '');
                                                     const isOwnMessage = Boolean(senderId && mongoUserId && senderId === String(mongoUserId));
                                                     const isGroup = activeConversation?.type === 'group';
-                                                    const showSenderName = isGroup && !isOwnMessage;
+                                                    const showSenderName = isGroup && !isOwnMessage && !msg.isDeletedForEveryone;
                                                     const isOnlyUrl = (msg.content && typeof msg.content === 'string') && (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
                                                     const embedDataTop = isOnlyUrl && msg.content.trim().startsWith('http') ? detectEcosystemLink(msg.content) : null;
                                                     const isEmbedOnly = isOnlyUrl && !!embedDataTop;
-                                                    const isMediaMessage = msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content, msg.attachmentType));
+                                                    const isMediaMessage = !msg.isDeletedForEveryone && (msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content, msg.attachmentType)));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     
                                                     const prevMsg = index > 0 ? array[index - 1] : null;
@@ -3938,8 +4018,12 @@ export default function Dashboard() {
                                                                 isOwn={isOwnMessage}
                                                                 mediaOnly={isMediaMessage}
                                                                 embedOnly={isEmbedOnly}
-                                                                onContextMenu={(e) => handleContextMenu(e, 'message', msg)}
-                                                                onTouchStart={(e) => handleTouchStart(e, msg)}
+                                                                onContextMenu={(e) => {
+                                                                    if (!msg.isDeletedForEveryone) handleContextMenu(e, 'message', msg);
+                                                                }}
+                                                                onTouchStart={(e) => {
+                                                                    if (!msg.isDeletedForEveryone) handleTouchStart(e, msg);
+                                                                }}
                                                                 onTouchMove={handleTouchMove}
                                                                 onTouchEnd={handleTouchEnd}
                                                                 onTouchCancel={handleTouchEnd}
@@ -3954,6 +4038,13 @@ export default function Dashboard() {
                                                                 )}
 
                                                                 <div style={{ wordBreak: 'break-word', marginTop: showSenderName && !isMediaMessage ? '2px' : '0', maxWidth: isImageWithCaption ? '300px' : 'none' }}>
+                                                                    {msg.isDeletedForEveryone ? (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--colors-textMuted)', fontStyle: 'italic' }}>
+                                                                            <Trash2 size={14} />
+                                                                            {isOwnMessage ? 'You deleted this message' : 'This message was deleted'}
+                                                                        </div>
+                                                                    ) : (
+                                                                    <>
                                                                     {msg.replyTo && (
                                                                         <div 
                                                                             onClick={() => {
@@ -3978,7 +4069,9 @@ export default function Dashboard() {
                                                                                 {msg.replyTo.sender?.displayName || 'Unknown'}
                                                                             </div>
                                                                             <div style={{ opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>
-                                                                                {msg.replyTo.content || (msg.replyTo.isCodeSnippet ? 'Code Snippet' : 'Media')}
+                                                                                {msg.replyTo.isDeletedForEveryone
+                                                                                    ? 'This message was deleted'
+                                                                                    : (msg.replyTo.content || (msg.replyTo.isCodeSnippet ? 'Code Snippet' : 'Media'))}
                                                                             </div>
                                                                         </div>
                                                                     )}
@@ -4123,6 +4216,8 @@ export default function Dashboard() {
                                                                             </>
                                                                         );
                                                                     })()}
+                                                                    </>
+                                                                    )}
                                                                     <span style={{ display: 'inline-block', width: msg.isEdited ? '80px' : '50px', height: '10px' }}>&#8203;</span>
                                                                 </div>
 
@@ -4156,7 +4251,7 @@ export default function Dashboard() {
                                                                     )}
                                                                 </MessageTime>
 
-                                                                {editingMessageId === msg._id && (
+                                                                {editingMessageId === msg._id && !msg.isDeletedForEveryone && (
                                                                     <form onSubmit={submitEdit} style={{ marginTop: '8px', zIndex: 10 }}>
                                                                         <EditInput
                                                                             autoFocus
@@ -5370,20 +5465,20 @@ export default function Dashboard() {
                     )}
                     {contextMenu.message && (
                         <>
-                            <ContextMenuItem onClick={() => {
+                            {!contextMenu.message.isDeletedForEveryone && <ContextMenuItem onClick={() => {
                                 selectMessage(contextMenu.message._id || contextMenu.message.createdAt);
                                 setContextMenu({ ...contextMenu, visible: false });
                             }}>
                                 <CheckSquare size={16} />
                                 Select message
-                            </ContextMenuItem>
-                            {!isAudioUrl(contextMenu.message.content) && contextMenu.message.sender._id === mongoUserId && (
+                            </ContextMenuItem>}
+                            {!contextMenu.message.isDeletedForEveryone && !isAudioUrl(contextMenu.message.content) && contextMenu.message.sender._id === mongoUserId && (
                                 <ContextMenuItem onClick={() => startEditing(contextMenu.message)}>
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
                                     Edit Message
                                 </ContextMenuItem>
                             )}
-                            {!isAudioUrl(contextMenu.message.content) && (
+                            {!contextMenu.message.isDeletedForEveryone && !isAudioUrl(contextMenu.message.content) && (
                                 <ContextMenuItem onClick={() => {
                                     navigator.clipboard.writeText(contextMenu.message.content);
                                     setContextMenu({ ...contextMenu, visible: false });
@@ -5392,20 +5487,20 @@ export default function Dashboard() {
                                     Copy Text
                                 </ContextMenuItem>
                             )}
-                            <ContextMenuItem onClick={() => {
+                            {!contextMenu.message.isDeletedForEveryone && <ContextMenuItem onClick={() => {
                                 setForwardMessageData(contextMenu.message);
                                 setContextMenu({ ...contextMenu, visible: false });
                             }}>
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4l-1.41 1.41L15.17 10H4v2h11.17l-4.58 4.59L12 18l7-7z"></path></svg>
                                 Forward Message
-                            </ContextMenuItem>
-                            <ContextMenuItem onClick={() => {
+                            </ContextMenuItem>}
+                            {!contextMenu.message.isDeletedForEveryone && <ContextMenuItem onClick={() => {
                                 deleteMessage(contextMenu.message);
                                 setContextMenu({ ...contextMenu, visible: false });
                             }} style={{ color: '#ef4444' }}>
                                 <Trash2 size={16} />
                                 Delete Message
-                            </ContextMenuItem>
+                            </ContextMenuItem>}
                         </>
                     )}
                     {contextMenu.callLog && (
@@ -5556,7 +5651,9 @@ export default function Dashboard() {
 
             {/* Delete Message Confirmation Modal */}
             {deleteMessagePrompt.visible && (
-                <ModalOverlay onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] })} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
+                <ModalOverlay onClick={() => {
+                    if (!isDeletingMessages) setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false });
+                }} style={{ zIndex: 9999, backdropFilter: 'blur(8px)', backgroundColor: 'rgba(11, 15, 25, 0.8)' }}>
                     <ModalContent onClick={e => e.stopPropagation()} style={{ 
                         maxWidth: '400px', 
                         padding: '32px', 
@@ -5577,26 +5674,31 @@ export default function Dashboard() {
                         </div>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--colors-textMain)', margin: 0, textAlign: 'center' }}>Delete message?</h2>
                         <p style={{ color: 'var(--colors-textMuted)', fontSize: '0.95rem', textAlign: 'center', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-                            You can delete this message for everyone, or just for yourself.
+                            {deleteMessagePrompt.allowDeleteForEveryone
+                                ? 'You can delete this message for everyone, or just for yourself.'
+                                : 'This message will only be deleted for you.'}
                         </p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-                            <Button 
+                            {deleteMessagePrompt.allowDeleteForEveryone && <Button
                                 variant="primary" 
                                 onClick={confirmDeleteForEveryone}
+                                disabled={isDeletingMessages}
                                 style={{ padding: '14px', borderRadius: '12px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: '600', fontSize: '1rem' }}
                             >
-                                Delete for everyone
-                            </Button>
+                                {isDeletingMessages ? 'Deleting…' : 'Delete for everyone'}
+                            </Button>}
                             <Button 
                                 variant="outline" 
                                 onClick={confirmDeleteForMe}
+                                disabled={isDeletingMessages}
                                 style={{ padding: '14px', borderRadius: '12px', fontWeight: '600', fontSize: '1rem', border: '1px solid var(--colors-border)', backgroundColor: 'var(--colors-surface)', color: 'var(--colors-textMain)' }}
                             >
                                 Delete for me
                             </Button>
                             <Button 
                                 variant="outline" 
-                                onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [] })}
+                                disabled={isDeletingMessages}
+                                onClick={() => setDeleteMessagePrompt({ visible: false, conversationId: null, messageIds: [], allowDeleteForEveryone: false })}
                                 style={{ padding: '14px', borderRadius: '12px', fontWeight: '500', fontSize: '1rem', border: 'none', backgroundColor: 'transparent', color: 'var(--colors-textMuted)' }}
                             >
                                 Cancel

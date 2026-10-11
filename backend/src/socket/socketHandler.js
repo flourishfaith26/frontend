@@ -62,7 +62,7 @@ export const setupSocket = (io) => {
                 await newMessage.save();
                 await newMessage.populate([
                     { path: 'sender', select: 'displayName avatarUrl' },
-                    { path: 'replyTo', select: 'content sender isCodeSnippet caption', populate: { path: 'sender', select: 'displayName' } }
+                    { path: 'replyTo', select: 'content sender isCodeSnippet caption isDeletedForEveryone', populate: { path: 'sender', select: 'displayName' } }
                 ]);
                 
                 // If conversation was hidden (deletedFor), restore it for the sender so they see it again
@@ -112,33 +112,93 @@ export const setupSocket = (io) => {
             }
         });
 
-        socket.on('delete_message_for_everyone', async ({ messageIds, conversationId }) => {
+        socket.on('delete_message_for_everyone', async ({ messageIds, conversationId }, acknowledge) => {
             try {
-                const result = await Message.deleteMany({ _id: { $in: messageIds }, conversationId });
-                if (result.deletedCount > 0) {
-                    io.to(conversationId).emit('messages_deleted_for_everyone', messageIds);
-                    const conv = await Conversation.findById(conversationId);
-                    if (conv?.participants) {
-                        conv.participants.forEach(pId => {
-                            io.to(getUserRoom(pId)).emit('messages_deleted_for_everyone', messageIds);
-                        });
-                    }
+                if (!Array.isArray(messageIds) || messageIds.length === 0 || !conversationId) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'No messages were selected' });
+                    return;
                 }
+
+                const senderId = socket.data.userId;
+                if (!senderId) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'You must be connected to delete messages' });
+                    return;
+                }
+
+                const conversation = await Conversation.findOne({ _id: conversationId, participants: senderId });
+                if (!conversation) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Conversation not found' });
+                    return;
+                }
+
+                const normalizedIds = [...new Set(messageIds.map(String))];
+                const ownedMessages = await Message.find({
+                    _id: { $in: normalizedIds },
+                    conversationId,
+                    sender: senderId,
+                    isDeletedForEveryone: { $ne: true }
+                }).select('_id');
+
+                if (ownedMessages.length !== normalizedIds.length) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'You can only delete your own messages for everyone' });
+                    return;
+                }
+
+                const deletedIds = ownedMessages.map(message => String(message._id));
+                await Message.updateMany(
+                    { _id: { $in: deletedIds }, conversationId, sender: senderId },
+                    {
+                        $set: {
+                            content: '',
+                            caption: '',
+                            attachmentName: '',
+                            attachmentType: '',
+                            isCodeSnippet: false,
+                            isEdited: false,
+                            isDeletedForEveryone: true
+                        },
+                        $unset: { replyTo: 1 }
+                    }
+                );
+
+                const deletionEvent = {
+                    messageIds: deletedIds,
+                    conversationId: String(conversationId),
+                    senderId: String(senderId)
+                };
+                io.to(conversationId).emit('messages_deleted_for_everyone', deletionEvent);
+                conversation.participants.forEach(pId => {
+                    io.to(getUserRoom(pId)).emit('messages_deleted_for_everyone', deletionEvent);
+                });
+                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds });
             } catch (error) {
                 console.error('Error deleting messages for everyone:', error);
+                if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message deletion failed' });
             }
         });
 
-        socket.on('delete_message_for_me', async ({ messageIds, conversationId, userId }) => {
+        socket.on('delete_message_for_me', async ({ messageIds, conversationId, userId }, acknowledge) => {
             try {
-                await Message.updateMany(
-                    { _id: { $in: messageIds }, conversationId },
+                if (!Array.isArray(messageIds) || messageIds.length === 0 || !conversationId || !userId) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'No messages were selected' });
+                    return;
+                }
+
+                const normalizedIds = messageIds.map(String);
+                const result = await Message.updateMany(
+                    { _id: { $in: normalizedIds }, conversationId },
                     { $addToSet: { deletedFor: userId } }
                 );
                 // We emit back only to this socket to update their local state immediately
-                socket.emit('messages_deleted_for_me', messageIds);
+                if (result.matchedCount === 0) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'The selected message could not be found' });
+                    return;
+                }
+                socket.emit('messages_deleted_for_me', normalizedIds);
+                if (typeof acknowledge === 'function') acknowledge({ ok: true, deletedIds: normalizedIds });
             } catch (error) {
                 console.error('Error deleting messages for me:', error);
+                if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message deletion failed' });
             }
         });
 
