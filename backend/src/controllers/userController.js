@@ -18,6 +18,7 @@ export const syncUser = async (req, res) => {
       if (!user.avatarUrl) user.avatarUrl = avatarUrl;
       if (!user.displayName) user.displayName = displayName;
       if (techDiscipline && !user.techDiscipline) user.techDiscipline = techDiscipline;
+      if (user.username && !user.hasCompletedProfile) user.hasCompletedProfile = true;
       await user.save();
     }
 
@@ -74,6 +75,7 @@ export const updateProfile = async (req, res) => {
             }
 
             updateData.username = cleanUsername;
+            updateData.hasCompletedProfile = true;
         }
 
         const user = await User.findOneAndUpdate(
@@ -154,13 +156,30 @@ export const searchByUsername = async (req, res) => {
         // Escape regex special chars so queries like "john.doe" match literal "."
         const escaped = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // Find users whose username starts with the query
+        // Find users whose username or displayName matches query
         const results = await User.find({
-            username: { $regex: `^${escaped}`, $options: 'i' },
-            _id: { $ne: currentUser?._id }
-        }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(10);
+            _id: { $ne: currentUser?._id },
+            $or: [
+                { username: { $regex: escaped, $options: 'i' } },
+                { displayName: { $regex: escaped, $options: 'i' } }
+            ]
+        }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(20);
 
-        res.status(200).json(results);
+        // Sort results: exact username match first, then prefix username match, then others
+        const sorted = [...results].sort((a, b) => {
+            const aName = (a.username || '').toLowerCase();
+            const bName = (b.username || '').toLowerCase();
+            const q = cleanQuery.toLowerCase();
+            if (aName === q) return -1;
+            if (bName === q) return 1;
+            const aStarts = aName.startsWith(q);
+            const bStarts = bName.startsWith(q);
+            if (aStarts && !bStarts) return -1;
+            if (!aStarts && bStarts) return 1;
+            return 0;
+        });
+
+        res.status(200).json(sorted);
     } catch (error) {
         console.error('Error searching users by username:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -243,5 +262,37 @@ export const getBlockedUsers = async (req, res) => {
     } catch (error) {
         console.error('Error fetching blocked users:', error);
         res.status(500).json({ message: 'Internal server error fetching blocked users' });
+    }
+};
+
+export const lookupUser = async (req, res) => {
+    try {
+        const { identifier } = req.query;
+        if (!identifier || typeof identifier !== 'string') {
+            return res.status(400).json({ message: 'Username or email identifier is required.' });
+        }
+        const cleanIdentifier = identifier.trim().toLowerCase();
+        const cleanUsername = normalizeUsername(identifier);
+
+        const user = await User.findOne({
+            $or: [
+                { email: cleanIdentifier },
+                { username: cleanUsername }
+            ]
+        }).select('email username displayName avatarUrl');
+
+        if (!user) {
+            return res.status(404).json({ message: 'No account found with that username or email.' });
+        }
+
+        res.status(200).json({
+            email: user.email,
+            username: user.username,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl
+        });
+    } catch (error) {
+        console.error('Error in lookupUser:', error);
+        res.status(500).json({ message: 'Internal server error during user lookup' });
     }
 };

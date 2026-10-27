@@ -1,6 +1,6 @@
 export const normalizeUsername = (raw) => {
     if (!raw || typeof raw !== 'string') return '';
-    return raw.trim().replace(/^@+/, '').toLowerCase();
+    return raw.trim().replace(/^@+\s*/, '').replace(/\s+/g, '').toLowerCase();
 };
 
 export const USERNAME_REGEX = /^[a-z0-9._]{3,30}$/;

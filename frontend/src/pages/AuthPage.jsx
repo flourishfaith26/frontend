@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { styled, keyframes } from '../stitches.config.js';
-import { Terminal, Code, Mail, Lock, User } from 'lucide-react';
+import { Terminal, Code, Mail, Lock, User, AlertCircle } from 'lucide-react';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 const float = keyframes({
     '0%': { transform: 'translateY(0px)' },
@@ -193,30 +195,93 @@ export default function AuthPage() {
     const [isSignup, setIsSignup] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
-        email: '',
+        identifier: '',
         password: ''
     });
+    const [authError, setAuthError] = useState('');
+    const [isResolving, setIsResolving] = useState(false);
 
-    const handleSocialLogin = () => {
-        loginWithRedirect({
-            authorizationParams: { screen_hint: isSignup ? 'signup' : 'login' }
-        });
-    };
-
-    const handleFormSubmit = (e) => {
-        e.preventDefault();
-        // Currently Auth0 React SDK only supports redirecting to Universal Login.
-        // To use custom in-app credentials, we'd need a custom JWT backend or auth0-js.
-        // For now, redirecting to Auth0 with login hint.
+    const handleSocialLogin = (connection) => {
+        setAuthError('');
         loginWithRedirect({
             authorizationParams: { 
-                screen_hint: isSignup ? 'signup' : 'login',
-                login_hint: formData.email
+                connection,
+                screen_hint: isSignup ? 'signup' : 'login' 
             }
         });
     };
 
+    const handleFormSubmit = async (e) => {
+        e.preventDefault();
+        setAuthError('');
+
+        const rawIdentifier = formData.identifier.trim();
+        if (!rawIdentifier) {
+            setAuthError('Please enter your username or email address.');
+            return;
+        }
+
+        if (isSignup) {
+            // New account signup requires a valid email address
+            if (!rawIdentifier.includes('@') || !rawIdentifier.includes('.')) {
+                setAuthError('Please enter a valid email address to create an account. You will choose your unique @username right after.');
+                return;
+            }
+            loginWithRedirect({
+                authorizationParams: { 
+                    screen_hint: 'signup',
+                    login_hint: rawIdentifier
+                }
+            });
+            return;
+        }
+
+        // Login flow: check if identifier is email or username
+        const looksLikeEmail = rawIdentifier.includes('@') && rawIdentifier.includes('.');
+        if (looksLikeEmail) {
+            loginWithRedirect({
+                authorizationParams: { 
+                    screen_hint: 'login',
+                    login_hint: rawIdentifier
+                }
+            });
+            return;
+        }
+
+        // It's a username (e.g. "flo", "@flo", "blossom123")
+        setIsResolving(true);
+        try {
+            const clean = rawIdentifier.replace(/^@+\s*/, '').replace(/\s+/g, '').toLowerCase();
+            const res = await fetch(`${BACKEND_URL}/api/users/lookup?identifier=${encodeURIComponent(clean)}`);
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setAuthError(data.message || `No account found with username @${clean}. Please check your username or use your email address.`);
+                setIsResolving(false);
+                return;
+            }
+            const foundUser = await res.json();
+            loginWithRedirect({
+                authorizationParams: { 
+                    screen_hint: 'login',
+                    login_hint: foundUser.email
+                }
+            });
+        } catch (err) {
+            console.error('User lookup error:', err);
+            // Fallback to Auth0 with whatever was typed
+            loginWithRedirect({
+                authorizationParams: { 
+                    screen_hint: 'login',
+                    login_hint: rawIdentifier
+                }
+            });
+        } finally {
+            setIsResolving(false);
+        }
+    };
+
     const handleChange = (e) => {
+        setAuthError('');
         setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
@@ -242,8 +307,25 @@ export default function AuthPage() {
                 <AuthBox>
                     <div>
                         <Title>{isSignup ? 'Create Account' : 'Welcome Back'}</Title>
-                        <Subtitle>{isSignup ? 'Join DevSup to start collaborating.' : 'Log in to your DevSup workspace.'}</Subtitle>
+                        <Subtitle>{isSignup ? 'Join DevSup to start collaborating.' : 'Log in to DevSup with your username or email and password.'}</Subtitle>
                     </div>
+
+                    {authError && (
+                        <div style={{ 
+                            padding: '12px 16px', 
+                            borderRadius: '8px', 
+                            backgroundColor: 'rgba(239, 68, 68, 0.12)', 
+                            border: '1px solid rgba(239, 68, 68, 0.3)', 
+                            color: '#ef4444', 
+                            fontSize: '0.88rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}>
+                            <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                            <span>{authError}</span>
+                        </div>
+                    )}
 
                     <Form onSubmit={handleFormSubmit}>
                         {isSignup && (
@@ -264,16 +346,22 @@ export default function AuthPage() {
                         )}
 
                         <InputGroup>
-                            <Label>Email Address</Label>
+                            <Label>{isSignup ? 'Email Address' : 'Username or Email'}</Label>
                             <InputWrapper>
-                                <InputIcon><Mail size={18} /></InputIcon>
+                                <InputIcon>
+                                    {isSignup || (formData.identifier.includes('@') && formData.identifier.includes('.')) 
+                                        ? <Mail size={18} /> 
+                                        : <User size={18} />}
+                                </InputIcon>
                                 <Input 
-                                    type="email" 
-                                    name="email" 
-                                    placeholder="developer@example.com" 
+                                    type="text" 
+                                    name="identifier" 
+                                    placeholder={isSignup ? "developer@example.com" : "e.g. blossom123 or dev@example.com"} 
                                     required 
-                                    value={formData.email}
+                                    value={formData.identifier}
                                     onChange={handleChange}
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
                                 />
                             </InputWrapper>
                         </InputGroup>
@@ -293,8 +381,8 @@ export default function AuthPage() {
                             </InputWrapper>
                         </InputGroup>
 
-                        <AuthButton type="submit" variant="primary" style={{ marginTop: '8px' }}>
-                            {isSignup ? 'Sign Up' : 'Log In'}
+                        <AuthButton type="submit" variant="primary" style={{ marginTop: '8px' }} disabled={isResolving}>
+                            {isResolving ? 'Connecting...' : (isSignup ? 'Sign Up' : 'Log In')}
                         </AuthButton>
                     </Form>
 

@@ -1827,9 +1827,9 @@ export default function Dashboard() {
                 setMongoUserId(mongoUser._id);
                 setCurrentUserData(mongoUser);
 
-                if (!mongoUser.hasCompletedProfile || !mongoUser.username) {
-                    // Skip the redirect once right after a successful profile save
-                    // to avoid a race condition between the PUT write and this sync read.
+                // Only redirect to /setup if user does NOT have a username set.
+                // Once a username is added, the user can use their dashboard freely, even after refreshing.
+                if (!mongoUser.username) {
                     const justSaved = sessionStorage.getItem('profileJustSaved');
                     if (justSaved) {
                         sessionStorage.removeItem('profileJustSaved');

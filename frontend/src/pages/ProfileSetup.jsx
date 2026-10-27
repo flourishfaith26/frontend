@@ -324,7 +324,7 @@ export default function ProfileSetup() {
         
         if (res.ok) {
           const data = await res.json();
-          if (data.hasCompletedProfile && data.username) {
+          if (data.username) {
             navigate('/dashboard', { replace: true });
             return;
           }
