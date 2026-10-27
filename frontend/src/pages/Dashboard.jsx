@@ -1828,8 +1828,15 @@ export default function Dashboard() {
                 setCurrentUserData(mongoUser);
 
                 if (!mongoUser.hasCompletedProfile || !mongoUser.username) {
-                    navigate('/setup');
-                    return;
+                    // Skip the redirect once right after a successful profile save
+                    // to avoid a race condition between the PUT write and this sync read.
+                    const justSaved = sessionStorage.getItem('profileJustSaved');
+                    if (justSaved) {
+                        sessionStorage.removeItem('profileJustSaved');
+                    } else {
+                        navigate('/setup', { replace: true });
+                        return;
+                    }
                 }
 
                 const statusRes = await fetch(`${BACKEND_URL}/api/status`, { headers: apiHeaders });

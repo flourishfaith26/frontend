@@ -383,6 +383,11 @@ export default function ProfileSetup() {
       setError(usernameValidation.error);
       return;
     }
+    // Block submit while availability check is still in flight
+    if (usernameChecking) {
+      setError("Please wait — still checking username availability.");
+      return;
+    }
     if (usernameFeedback && !usernameFeedback.available) {
       setError(usernameFeedback.message || "Username is not available.");
       return;
@@ -411,6 +416,17 @@ export default function ProfileSetup() {
         throw new Error(errData.message || "Failed to save profile");
       }
 
+      const savedUser = await res.json();
+
+      // Verify the backend actually persisted the critical fields before navigating.
+      // If these are missing, we'd land in a redirect loop on the dashboard.
+      if (!savedUser.hasCompletedProfile || !savedUser.username) {
+        throw new Error("Profile save incomplete — please try again.");
+      }
+
+      // Signal to Dashboard that we just completed setup so it skips its
+      // profile-guard redirect on the very first sync (race-condition guard).
+      sessionStorage.setItem('profileJustSaved', '1');
       navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error(err);
