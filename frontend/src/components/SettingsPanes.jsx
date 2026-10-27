@@ -1,7 +1,8 @@
 import React from 'react';
 import { styled, keyframes } from '../stitches.config.js';
-import { MessageSquare, Bell, Monitor, HelpCircle, ChevronLeft, Trash2, Camera, Edit2, Check, Image as ImageIcon, Volume2, EyeOff, Shield, Smartphone, Globe, Moon, Type, DownloadCloud } from 'lucide-react';
+import { MessageSquare, Bell, Monitor, HelpCircle, ChevronLeft, Trash2, Camera, Edit2, Check, Image as ImageIcon, Volume2, EyeOff, Shield, Smartphone, Globe, Moon, Type, DownloadCloud, AlertCircle } from 'lucide-react';
 import { techDoodlesSvg, svgToDataUri, wallpaperColors } from '../utils/wallpapers.js';
+import { normalizeUsername, validateUsernameFormat } from '../utils/username.js';
 
 const slideIn = keyframes({
     '0%': { transform: 'translateX(10px)', opacity: 0 },
@@ -233,66 +234,150 @@ export const AccountPane = ({ onBack, settings, updateSetting }) => (
     </PaneContainer>
 );
 
-export const PrivacyPane = ({ onBack, settings, updateSetting }) => (
-    <PaneContainer>
-        <PaneHeader>
-            <ChevronLeft size={28} style={{ cursor: 'pointer', color: 'var(--colors-textMain)', marginLeft: '-8px' }} onClick={onBack} />
-            <HeaderTitle>Privacy</HeaderTitle>
-        </PaneHeader>
-        <Section>
-            <SectionTitle>Visibility</SectionTitle>
-            <SectionCard>
-                <SettingRow>
-                    <IconWrapper><Globe size={20}/></IconWrapper>
-                    <SettingText>
-                        <SettingLabel>Last seen and online</SettingLabel>
-                    </SettingText>
-                    <StyledSelect 
-                        value={settings.lastSeen} 
-                        onChange={(e) => updateSetting('lastSeen', e.target.value)}
-                    >
-                        <option value="everyone">Everyone</option>
-                        <option value="contacts">My Contacts</option>
-                        <option value="nobody">Nobody</option>
-                    </StyledSelect>
-                </SettingRow>
-                <SettingRow>
-                    <IconWrapper><ImageIcon size={20}/></IconWrapper>
-                    <SettingText>
-                        <SettingLabel>Profile photo</SettingLabel>
-                    </SettingText>
-                    <StyledSelect 
-                        value={settings.profilePhoto} 
-                        onChange={(e) => updateSetting('profilePhoto', e.target.value)}
-                    >
-                        <option value="everyone">Everyone</option>
-                        <option value="contacts">My Contacts</option>
-                        <option value="nobody">Nobody</option>
-                    </StyledSelect>
-                </SettingRow>
-            </SectionCard>
+export const PrivacyPane = ({ onBack, settings, updateSetting, blockedUsers = [], onUnblockUser }) => {
+    const [viewingBlocked, setViewingBlocked] = React.useState(false);
 
-            <SectionTitle>Messaging</SectionTitle>
-            <SectionCard>
-                <SettingRow>
-                    <IconWrapper><Check size={20}/></IconWrapper>
-                    <SettingText>
-                        <SettingLabel>Read receipts</SettingLabel>
-                        <SettingDescription>If turned off, you won't send or receive read receipts.</SettingDescription>
-                    </SettingText>
-                    <Toggle checked={settings.readReceipts} onChange={(e) => updateSetting('readReceipts', e.target.checked)} />
-                </SettingRow>
-                <SettingRow clickable>
-                    <IconWrapper><EyeOff size={20}/></IconWrapper>
-                    <SettingText>
-                        <SettingLabel>Blocked contacts</SettingLabel>
-                        <SettingDescription>0 contacts</SettingDescription>
-                    </SettingText>
-                </SettingRow>
-            </SectionCard>
-        </Section>
-    </PaneContainer>
-);
+    if (viewingBlocked) {
+        return (
+            <PaneContainer>
+                <PaneHeader>
+                    <ChevronLeft size={28} style={{ cursor: 'pointer', color: 'var(--colors-textMain)', marginLeft: '-8px' }} onClick={() => setViewingBlocked(false)} />
+                    <HeaderTitle>Blocked Contacts</HeaderTitle>
+                </PaneHeader>
+                <Section>
+                    <SectionTitle>{blockedUsers.length} Blocked {blockedUsers.length === 1 ? 'Contact' : 'Contacts'}</SectionTitle>
+                    {blockedUsers.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--colors-textMuted)' }}>
+                            <EyeOff size={40} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                            <p style={{ margin: 0, fontSize: '0.95rem' }}>You have not blocked any contacts.</p>
+                        </div>
+                    ) : (
+                        <SectionCard>
+                            {blockedUsers.map((blocked) => {
+                                const id = blocked._id || blocked;
+                                const name = blocked.displayName || blocked.username || 'Blocked Contact';
+                                const username = blocked.username ? `@${blocked.username}` : '';
+                                const avatar = blocked.avatarUrl || '/default-avatar.svg';
+
+                                return (
+                                    <div
+                                        key={id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '12px 16px',
+                                            borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <img
+                                                src={avatar}
+                                                alt={name}
+                                                style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                                                onError={(e) => { e.currentTarget.src = '/default-avatar.svg'; }}
+                                            />
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontWeight: 500, color: 'var(--colors-textMain)', fontSize: '0.95rem' }}>{name}</span>
+                                                {username && <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)' }}>{username}</span>}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => onUnblockUser?.(id, name)}
+                                            style={{
+                                                padding: '6px 14px',
+                                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                                color: '#ef4444',
+                                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: 600,
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#ef4444';
+                                                e.currentTarget.style.color = '#fff';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                                                e.currentTarget.style.color = '#ef4444';
+                                            }}
+                                        >
+                                            Unblock
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </SectionCard>
+                    )}
+                </Section>
+            </PaneContainer>
+        );
+    }
+
+    return (
+        <PaneContainer>
+            <PaneHeader>
+                <ChevronLeft size={28} style={{ cursor: 'pointer', color: 'var(--colors-textMain)', marginLeft: '-8px' }} onClick={onBack} />
+                <HeaderTitle>Privacy</HeaderTitle>
+            </PaneHeader>
+            <Section>
+                <SectionTitle>Visibility</SectionTitle>
+                <SectionCard>
+                    <SettingRow>
+                        <IconWrapper><Globe size={20}/></IconWrapper>
+                        <SettingText>
+                            <SettingLabel>Last seen and online</SettingLabel>
+                        </SettingText>
+                        <StyledSelect 
+                            value={settings.lastSeen} 
+                            onChange={(e) => updateSetting('lastSeen', e.target.value)}
+                        >
+                            <option value="everyone">Everyone</option>
+                            <option value="contacts">My Contacts</option>
+                            <option value="nobody">Nobody</option>
+                        </StyledSelect>
+                    </SettingRow>
+                    <SettingRow>
+                        <IconWrapper><ImageIcon size={20}/></IconWrapper>
+                        <SettingText>
+                            <SettingLabel>Profile photo</SettingLabel>
+                        </SettingText>
+                        <StyledSelect 
+                            value={settings.profilePhoto} 
+                            onChange={(e) => updateSetting('profilePhoto', e.target.value)}
+                        >
+                            <option value="everyone">Everyone</option>
+                            <option value="contacts">My Contacts</option>
+                            <option value="nobody">Nobody</option>
+                        </StyledSelect>
+                    </SettingRow>
+                </SectionCard>
+
+                <SectionTitle>Messaging</SectionTitle>
+                <SectionCard>
+                    <SettingRow>
+                        <IconWrapper><Check size={20}/></IconWrapper>
+                        <SettingText>
+                            <SettingLabel>Read receipts</SettingLabel>
+                            <SettingDescription>If turned off, you won't send or receive read receipts.</SettingDescription>
+                        </SettingText>
+                        <Toggle checked={settings.readReceipts} onChange={(e) => updateSetting('readReceipts', e.target.checked)} />
+                    </SettingRow>
+                    <SettingRow clickable onClick={() => setViewingBlocked(true)}>
+                        <IconWrapper><EyeOff size={20}/></IconWrapper>
+                        <SettingText>
+                            <SettingLabel>Blocked contacts</SettingLabel>
+                            <SettingDescription>{blockedUsers.length} {blockedUsers.length === 1 ? 'contact' : 'contacts'}</SettingDescription>
+                        </SettingText>
+                    </SettingRow>
+                </SectionCard>
+            </Section>
+        </PaneContainer>
+    );
+};
 
 export const ChatsPane = ({ onBack, settings, updateSetting, getAccessTokenSilently, BACKEND_URL }) => {
     const [isUploading, setIsUploading] = React.useState(false);
@@ -593,6 +678,12 @@ export const HelpPane = ({ onBack }) => (
 export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTokenSilently, BACKEND_URL, onViewProfilePicture }) => {
     const [isEditingName, setIsEditingName] = React.useState(false);
     const [name, setName] = React.useState(currentUser?.displayName || '');
+    const [isEditingUsername, setIsEditingUsername] = React.useState(false);
+    const [usernameInput, setUsernameInput] = React.useState(currentUser?.username || '');
+    const [usernameError, setUsernameError] = React.useState('');
+    const [isCheckingUsername, setIsCheckingUsername] = React.useState(false);
+    const [isSavingUsername, setIsSavingUsername] = React.useState(false);
+    const checkUsernameTimerRef = React.useRef(null);
     const [isEditingAbout, setIsEditingAbout] = React.useState(false);
     const [about, setAbout] = React.useState(currentUser?.about || 'Available');
     const [isEditingGithub, setIsEditingGithub] = React.useState(false);
@@ -604,6 +695,40 @@ export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTok
     const [isUploading, setIsUploading] = React.useState(false);
     
     const fileInputRef = React.useRef(null);
+
+    const checkAvailabilityDebounced = (val) => {
+        if (checkUsernameTimerRef.current) clearTimeout(checkUsernameTimerRef.current);
+        const clean = normalizeUsername(val);
+        if (!clean) return;
+        const validation = validateUsernameFormat(clean);
+        if (!validation.isValid) {
+            setUsernameError(validation.error);
+            return;
+        }
+        if (clean === currentUser?.username) return;
+
+        setIsCheckingUsername(true);
+        checkUsernameTimerRef.current = setTimeout(async () => {
+            try {
+                const token = await getAccessTokenSilently();
+                const res = await fetch(`${BACKEND_URL}/api/users/check-username?username=${encodeURIComponent(clean)}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.available) {
+                        setUsernameError(data.message);
+                    } else {
+                        setUsernameError('');
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsCheckingUsername(false);
+            }
+        }, 350);
+    };
 
     const handleAvatarChange = async (e) => {
         const file = e.target.files[0];
@@ -675,6 +800,77 @@ export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTok
                         </div>
                     </div>
                     <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', marginTop: '16px', lineHeight: '1.4' }}>This is not your username or pin. This name will be visible to your DevSup contacts.</div>
+                </SectionCard>
+
+                <SectionCard style={{ width: '100%', padding: '20px' }}>
+                    <div style={{ color: 'var(--colors-accent)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', fontWeight: '600' }}>Username</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {isEditingUsername ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                                <span style={{ color: 'var(--colors-accent)', fontWeight: '700', fontSize: '1.15rem' }}>@</span>
+                                <input
+                                    type="text"
+                                    value={usernameInput}
+                                    onChange={(e) => {
+                                        const clean = normalizeUsername(e.target.value);
+                                        setUsernameInput(clean);
+                                        setUsernameError('');
+                                        checkAvailabilityDebounced(clean);
+                                    }}
+                                    style={{ flex: 1, backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid var(--colors-accent)', color: 'var(--colors-textMain)', fontSize: '1.1rem', outline: 'none', padding: '4px 0' }}
+                                    autoFocus
+                                    placeholder="e.g. blossom123"
+                                    disabled={isSavingUsername}
+                                />
+                            </div>
+                        ) : (
+                            <span style={{ fontSize: '1.1rem', color: currentUser?.username ? 'var(--colors-textMain)' : 'var(--colors-textMuted)', fontWeight: '500' }}>
+                                {currentUser?.username ? `@${currentUser.username}` : 'Not set — tap to add'}
+                            </span>
+                        )}
+                        <div style={{ cursor: isSavingUsername ? 'not-allowed' : 'pointer', color: 'var(--colors-textMuted)', padding: '8px', marginLeft: '12px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                            {isEditingUsername ? (
+                                isSavingUsername ? (
+                                    <div style={{ width: '18px', height: '18px', border: '2px solid var(--colors-accent)', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                ) : (
+                                    <Check size={18} color="var(--colors-accent)" onClick={async () => {
+                                        const clean = normalizeUsername(usernameInput);
+                                        const validation = validateUsernameFormat(clean);
+                                        if (!validation.isValid) { 
+                                            setUsernameError(validation.error); 
+                                            return; 
+                                        }
+                                        if (clean === currentUser?.username) {
+                                            setIsEditingUsername(false);
+                                            return;
+                                        }
+                                        setIsSavingUsername(true);
+                                        const result = await onUpdateProfile({ username: clean });
+                                        setIsSavingUsername(false);
+                                        if (result && result.error) {
+                                            setUsernameError(result.error);
+                                        } else {
+                                            setIsEditingUsername(false);
+                                        }
+                                    }} />
+                                )
+                            ) : (
+                                <Edit2 size={18} onClick={() => { setUsernameInput(currentUser?.username || ''); setUsernameError(''); setIsEditingUsername(true); }} />
+                            )}
+                        </div>
+                    </div>
+                    {isCheckingUsername && (
+                        <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.82rem', marginTop: '8px' }}>Checking availability...</div>
+                    )}
+                    {usernameError && (
+                        <div style={{ color: '#ef4444', fontSize: '0.82rem', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                            <span>{usernameError}</span>
+                        </div>
+                    )}
+                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', marginTop: '8px', lineHeight: '1.4' }}>
+                        Your unique @username (lowercase letters, numbers, _ and . only). Others use this to find and message you.
+                    </div>
                 </SectionCard>
 
                 <SectionCard style={{ width: '100%', padding: '20px' }}>

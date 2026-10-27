@@ -986,7 +986,7 @@ export default function Whiteboard({ socket, conversationId, mongoUserId, onClos
                         <button 
                             onClick={exportToChat}
                             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: 'var(--colors-accent)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '500' }}
-                            title="Send as JPEG to Chat"
+                            title="Send Mock-up to Chat"
                         >
                             <Send size={16} /> Send to Chat
                         </button>

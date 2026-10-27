@@ -1,6 +1,7 @@
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import CallLog from '../models/CallLog.js';
+import User from '../models/User.js';
 
 // Memory store tracks every active socket for a user across their devices.
 const onlineUsers = new Map();
@@ -45,10 +46,42 @@ export const setupSocket = (io) => {
         // 3. Message Handling
         socket.on('send_message', async (messageData, acknowledge) => {
             try {
+                const conv = await Conversation.findById(messageData.conversationId);
+                if (!conv) {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Conversation not found' });
+                    return;
+                }
+
+                // If direct message, check if either user blocked the other
+                if (conv.type === 'direct' && conv.participants && conv.participants.length === 2) {
+                    const recipientId = conv.participants.find(p => p.toString() !== String(messageData.senderId));
+                    if (recipientId) {
+                        const [senderUser, recipientUser] = await Promise.all([
+                            User.findById(messageData.senderId).select('blockedUsers'),
+                            User.findById(recipientId).select('blockedUsers')
+                        ]);
+
+                        if (recipientUser?.blockedUsers?.some(id => id.toString() === String(messageData.senderId))) {
+                            if (typeof acknowledge === 'function') {
+                                acknowledge({ ok: false, error: 'You cannot send messages to this contact because you are blocked.' });
+                            }
+                            return;
+                        }
+
+                        if (senderUser?.blockedUsers?.some(id => id.toString() === String(recipientId))) {
+                            if (typeof acknowledge === 'function') {
+                                acknowledge({ ok: false, error: 'You have blocked this contact. Unblock them to send messages.' });
+                            }
+                            return;
+                        }
+                    }
+                }
+
                 const sequence = await getNextMessageSequence(messageData.conversationId);
                 const newMessage = new Message({
                     conversationId: messageData.conversationId,
                     sender: messageData.senderId,
+                    clientMessageId: messageData.clientMessageId || '',
                     content: messageData.content,
                     caption: messageData.caption || '',
                     attachmentName: messageData.attachmentName || '',
@@ -61,12 +94,12 @@ export const setupSocket = (io) => {
                 
                 await newMessage.save();
                 await newMessage.populate([
-                    { path: 'sender', select: 'displayName avatarUrl' },
-                    { path: 'replyTo', select: 'content sender isCodeSnippet caption isDeletedForEveryone', populate: { path: 'sender', select: 'displayName' } }
+                    { path: 'sender', select: 'displayName avatarUrl username' },
+                    { path: 'replyTo', select: 'content sender isCodeSnippet caption isDeletedForEveryone', populate: { path: 'sender', select: 'displayName username' } }
                 ]);
                 
                 // If conversation was hidden (deletedFor), restore it for the sender so they see it again
-                const conv = await Conversation.findByIdAndUpdate(messageData.conversationId, {
+                const updatedConv = await Conversation.findByIdAndUpdate(messageData.conversationId, {
                     lastMessage: newMessage._id,
                     updatedAt: new Date(),
                     $pull: { deletedFor: messageData.senderId }
@@ -75,15 +108,16 @@ export const setupSocket = (io) => {
                 const messageToEmit = newMessage.toObject();
                 if (messageData.clientMessageId) messageToEmit.clientMessageId = messageData.clientMessageId;
 
-                io.to(messageData.conversationId).emit('receive_message', messageToEmit);
-
-                // Also notify every participant via their personal user room so sidebar and delivery receipts update
-                if (conv?.participants) {
-                    conv.participants.forEach(pId => {
-                        io.to(getUserRoom(pId)).emit('receive_message', messageToEmit);
+                // Deduplicated multi-room broadcast: Socket.IO chains .to() so each client socket receives event once
+                let broadcast = io.to(messageData.conversationId);
+                if (updatedConv?.participants) {
+                    updatedConv.participants.forEach(pId => {
+                        broadcast = broadcast.to(getUserRoom(pId));
                     });
                 }
-                if (typeof acknowledge === 'function') acknowledge({ ok: true });
+                broadcast.emit('receive_message', messageToEmit);
+
+                if (typeof acknowledge === 'function') acknowledge({ ok: true, message: messageToEmit });
             } catch (error) {
                 console.error('Error handling socket message:', error);
                 if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Message could not be sent' });
@@ -96,7 +130,7 @@ export const setupSocket = (io) => {
                     messageId, 
                     { content: newContent, isEdited: true },
                     { new: true }
-                ).populate('sender', 'displayName avatarUrl');
+                ).populate('sender', 'displayName avatarUrl username');
 
                 if (updatedMsg) {
                     io.to(conversationId).emit('message_edited', updatedMsg);
@@ -295,6 +329,24 @@ export const setupSocket = (io) => {
 
         // 5. WebRTC Signaling
         socket.on('call_user', async ({ userToCall, signalData, from, callerInfo, callType }, acknowledge) => {
+            try {
+                const [callerUser, calleeUser] = await Promise.all([
+                    User.findById(from).select('blockedUsers'),
+                    User.findById(userToCall).select('blockedUsers')
+                ]);
+
+                if (calleeUser?.blockedUsers?.some(id => id.toString() === String(from))) {
+                    acknowledge?.({ ok: false, error: 'Call failed. You are blocked by this user.' });
+                    return;
+                }
+                if (callerUser?.blockedUsers?.some(id => id.toString() === String(userToCall))) {
+                    acknowledge?.({ ok: false, error: 'Call failed. You have blocked this user.' });
+                    return;
+                }
+            } catch (err) {
+                console.error('Error checking block status for call:', err);
+            }
+
             const callPayload = {
                 signal: signalData,
                 from: String(from),

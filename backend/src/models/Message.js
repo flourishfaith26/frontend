@@ -59,6 +59,10 @@ const messageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Message'
   },
+  clientMessageId: {
+    type: String,
+    default: ''
+  },
   sequence: {
     type: Number
   }

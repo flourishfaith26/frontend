@@ -13,7 +13,7 @@ export const getUserConversations = async (req, res) => {
       participants: { $in: [currentUser._id] },
       deletedFor: { $ne: currentUser._id }
     })
-      .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline')
+      .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline username')
       .populate('lastMessage')
       .sort({ updatedAt: -1 });
 
@@ -33,7 +33,7 @@ export const createConversation = async (req, res) => {
       const existingConvo = await Conversation.findOne({
         type: 'direct',
         participants: { $all: participantIds, $size: 2 }
-      }).populate('participants', 'displayName avatarUrl onlineStatus techDiscipline');
+      }).populate('participants', 'displayName avatarUrl onlineStatus techDiscipline username');
       
       if (existingConvo) return res.status(200).json(existingConvo);
     }
@@ -62,7 +62,7 @@ export const createConversation = async (req, res) => {
     
     // Populate the newly saved conversation before returning it to the frontend
     const populatedConversation = await Conversation.findById(savedConversation._id)
-        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline'); // Added populate here!
+        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline username');
 
     res.status(201).json(populatedConversation);
   } catch (error) {
@@ -103,7 +103,7 @@ export const updateConversation = async (req, res) => {
     await conversation.save();
     
     const populatedConversation = await Conversation.findById(id)
-        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline');
+        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline username');
         
     res.status(200).json(populatedConversation);
   } catch (error) {
@@ -144,7 +144,7 @@ export const addMembersToConversation = async (req, res) => {
     await conversation.save();
 
     const populatedConversation = await Conversation.findById(id)
-        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline')
+        .populate('participants', 'displayName avatarUrl onlineStatus techDiscipline username')
         .populate('lastMessage');
         
     res.status(200).json(populatedConversation);

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { styled, keyframes } from '../stitches.config.js';
-import { Globe, Briefcase, Link as LinkIcon, CheckCircle, ShieldCheck, User as UserIcon, Code2, Loader2, Camera } from 'lucide-react';
+import { Globe, Briefcase, Link as LinkIcon, CheckCircle, ShieldCheck, User as UserIcon, Code2, Loader2, Camera, Check, AlertCircle } from 'lucide-react';
+import { normalizeUsername, validateUsernameFormat } from '../utils/username.js';
 
 const fadeIn = keyframes({
   '0%': { opacity: 0, transform: 'scale(0.95)' },
@@ -228,6 +229,7 @@ export default function ProfileSetup() {
   
   const [formData, setFormData] = useState({
     displayName: user?.name || user?.nickname || user?.email || '',
+    username: '',
     avatarUrl: user?.picture || '',
     about: 'Available',
     techDiscipline: 'Fullstack',
@@ -241,7 +243,38 @@ export default function ProfileSetup() {
   const [error, setError] = useState('');
   const [isFetching, setIsFetching] = useState(true);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isExistingUserWithoutUsername, setIsExistingUserWithoutUsername] = useState(false);
+  const [usernameChecking, setUsernameChecking] = useState(false);
+  const [usernameFeedback, setUsernameFeedback] = useState(null); // { available: boolean, message: string }
+  const checkTimerRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const checkAvailabilityDebounced = (username) => {
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+    const validation = validateUsernameFormat(username);
+    if (!validation.isValid) {
+      setUsernameChecking(false);
+      setUsernameFeedback({ available: false, message: validation.error });
+      return;
+    }
+    setUsernameChecking(true);
+    checkTimerRef.current = setTimeout(async () => {
+      try {
+        const token = await getAccessTokenSilently();
+        const res = await fetch(`${BACKEND_URL}/api/users/check-username?username=${encodeURIComponent(validation.normalized)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const result = await res.json();
+          setUsernameFeedback(result);
+        }
+      } catch (err) {
+        console.error("Availability check error:", err);
+      } finally {
+        setUsernameChecking(false);
+      }
+    }, 300);
+  };
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
@@ -286,14 +319,19 @@ export default function ProfileSetup() {
         
         if (res.ok) {
           const data = await res.json();
-          if (data.hasCompletedProfile) {
+          if (data.hasCompletedProfile && data.username) {
             navigate('/dashboard', { replace: true });
             return;
+          }
+
+          if (data.hasCompletedProfile && !data.username) {
+            setIsExistingUserWithoutUsername(true);
           }
           
           setFormData(prev => ({
             ...prev,
             displayName: data.displayName || prev.displayName,
+            username: data.username || prev.username,
             avatarUrl: data.avatarUrl || prev.avatarUrl,
             about: data.about || prev.about,
             techDiscipline: data.techDiscipline || prev.techDiscipline,
@@ -302,6 +340,10 @@ export default function ProfileSetup() {
             portfolioUrl: data.portfolioUrl || '',
             verificationProof: data.verificationProof || ''
           }));
+
+          if (data.username) {
+            checkAvailabilityDebounced(data.username);
+          }
         }
       } catch (err) {
         console.error("Error fetching profile:", err);
@@ -316,13 +358,34 @@ export default function ProfileSetup() {
   }, [getAccessTokenSilently, user, navigate]);
 
   const handleChange = (e) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    let { name, value } = e.target;
+    if (name === 'username') {
+      // Auto-strip leading @ and lowercase
+      value = normalizeUsername(value);
+      if (!value) {
+        setUsernameFeedback(null);
+        setUsernameChecking(false);
+        if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+      } else {
+        checkAvailabilityDebounced(value);
+      }
+    }
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.displayName.trim()) {
       setError("Display Name is required.");
+      return;
+    }
+    const usernameValidation = validateUsernameFormat(formData.username);
+    if (!usernameValidation.isValid) {
+      setError(usernameValidation.error);
+      return;
+    }
+    if (usernameFeedback && !usernameFeedback.available) {
+      setError(usernameFeedback.message || "Username is not available.");
       return;
     }
 
@@ -339,16 +402,20 @@ export default function ProfileSetup() {
         },
         body: JSON.stringify({
           ...formData,
+          username: usernameValidation.normalized,
           hasCompletedProfile: true
         })
       });
 
-      if (!res.ok) throw new Error("Failed to save profile");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to save profile");
+      }
 
       navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error(err);
-      setError("An error occurred while saving your profile. Please try again.");
+      setError(err.message || "An error occurred while saving your profile. Please try again.");
       setIsSubmitting(false);
     }
   };
@@ -366,11 +433,36 @@ export default function ProfileSetup() {
     <PageContainer>
       <FormContainer as="form" onSubmit={handleSubmit}>
         <Header>
-          <Title><ShieldCheck size={42} color="var(--colors-accent)" /> Welcome to DevSup!</Title>
-          <Subtitle>Let's build your developer identity. This helps others know who they're talking to and verifies your tech credibility.</Subtitle>
+          <Title>
+            <ShieldCheck size={42} color="var(--colors-accent)" /> 
+            {isExistingUserWithoutUsername ? 'Set Your DevSup @username' : 'Welcome to DevSup!'}
+          </Title>
+          <Subtitle>
+            {isExistingUserWithoutUsername 
+              ? 'DevSup now uses unique @usernames for direct messaging and connections. Please choose your unique handle to continue.'
+              : "Let's build your developer identity. This helps others know who they're talking to and verifies your tech credibility."}
+          </Subtitle>
         </Header>
 
         <FormContent>
+          {isExistingUserWithoutUsername && (
+            <div style={{
+              padding: '16px 20px',
+              borderRadius: '16px',
+              backgroundColor: 'rgba(6, 182, 212, 0.1)',
+              border: '1px solid var(--colors-accent)',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px'
+            }}>
+              <ShieldCheck size={28} color="var(--colors-accent)" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '0.92rem', color: 'var(--colors-textMain)', lineHeight: '1.4' }}>
+                <strong>Mandatory Username Setup:</strong> To keep DevSup organized and searchable, every developer now has a unique @username. Your display name and existing profile information remain safe!
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '32px' }}>
             <div style={{ position: 'relative', width: '120px', height: '120px' }}>
               <img 
@@ -401,6 +493,60 @@ export default function ProfileSetup() {
                 placeholder="e.g. Jane Doe"
                 required
               />
+            </InputGroup>
+
+            <InputGroup>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Label style={{ margin: 0 }}>Username *</Label>
+                {formData.username && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--colors-accent)', fontWeight: '600' }}>
+                    @{formData.username}
+                  </span>
+                )}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', color: 'var(--colors-accent)', fontWeight: '700', fontSize: '1.15rem', pointerEvents: 'none' }}>@</span>
+                <Input
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  placeholder="e.g. blossom123"
+                  style={{ 
+                    paddingLeft: '38px',
+                    borderColor: usernameFeedback 
+                      ? (usernameFeedback.available ? '#10b981' : '#ef4444')
+                      : undefined
+                  }}
+                  required
+                  autoFocus={isExistingUserWithoutUsername}
+                />
+              </div>
+
+              {usernameChecking && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--colors-textMuted)', fontSize: '0.82rem', marginTop: '-4px' }}>
+                  <SpinningLoader size={14} color="var(--colors-accent)" />
+                  <span>Checking availability...</span>
+                </div>
+              )}
+
+              {!usernameChecking && usernameFeedback && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  color: usernameFeedback.available ? '#10b981' : '#ef4444', 
+                  fontSize: '0.82rem', 
+                  marginTop: '-4px',
+                  fontWeight: '500'
+                }}>
+                  {usernameFeedback.available ? <Check size={14} /> : <AlertCircle size={14} />}
+                  <span>{usernameFeedback.message}</span>
+                </div>
+              )}
+
+              <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)', marginTop: '-4px', lineHeight: '1.4' }}>
+                3–30 characters. Permitted characters: lowercase letters (a-z), numbers (0-9), underscores (_), and periods (.). Must be globally unique.
+              </span>
             </InputGroup>
             
             <InputGroup>
@@ -494,7 +640,7 @@ export default function ProfileSetup() {
         <Footer>
           <SubmitButton type="submit" disabled={isSubmitting}>
             {isSubmitting ? <SpinningLoader size={20} /> : <CheckCircle size={20} />}
-            {isSubmitting ? 'Saving...' : 'Complete Profile'}
+            {isSubmitting ? 'Saving...' : (isExistingUserWithoutUsername ? 'Save Username & Continue' : 'Complete Profile')}
           </SubmitButton>
         </Footer>
       </FormContainer>

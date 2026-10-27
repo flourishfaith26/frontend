@@ -25,13 +25,14 @@ import { detectEcosystemLink } from '../utils/urlParser.js';
 import { getDailyUserColor } from '../utils/colorUtils.js';
 const Whiteboard = lazy(() => import('../components/Whiteboard'));
 const CallOverlay = lazy(() => import('../components/CallOverlay'));
-import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ThumbsDown, Trash2, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck, FileText, Maximize2 } from 'lucide-react';
+import { Brush, MessageSquare, LogOut, Code2, Users, Settings, Video, Phone, Search, MoreVertical, CircleDashed, Bell, BellOff, Lock, Key, HelpCircle, Monitor, Mic, Square, Play, Pause, Plus, X, ArrowLeft, Image, Star, Clock, ShieldAlert, ShieldCheck, ThumbsDown, Trash2, Briefcase, Link as LinkIcon, UserPlus, Timer, Info, Rocket, CheckSquare, XCircle, Eraser, ChevronRight, Check, CheckCheck, FileText, Maximize2 } from 'lucide-react';
 import { AccountPane, PrivacyPane, ChatsPane, NotificationsPane, KeyboardShortcutsPane, HelpPane, ProfilePane } from '../components/SettingsPanes';
 const StoryViewer = lazy(() => import('../components/StoryViewer'));
 import { motion } from 'framer-motion';
 const StatusUploadModal = lazy(() => import('../components/StatusUploadModal'));
 const EventsView = lazy(() => import('../components/EventsView'));
 import { useNavigate } from 'react-router-dom';
+import { normalizeUsername } from '../utils/username.js';
 
 const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -1702,9 +1703,14 @@ export default function Dashboard() {
             if (res.ok) {
                 const updatedUser = await res.json();
                 setCurrentUserData(updatedUser);
+                return null;
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                return { error: errData.message || 'Failed to update profile' };
             }
         } catch (error) {
             console.error("Error updating profile:", error);
+            return { error: 'Network error. Please try again.' };
         }
     };
 
@@ -1729,6 +1735,9 @@ export default function Dashboard() {
     const [addMembersSearchQuery, setAddMembersSearchQuery] = useState('');
     const [selectedMembersToAdd, setSelectedMembersToAdd] = useState([]);
     const [userSearchQuery, setUserSearchQuery] = useState('');
+    const [userSearchResults, setUserSearchResults] = useState([]);
+    const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+    const userSearchTimerRef = useRef(null);
     const [forwardMessageData, setForwardMessageData] = useState(null);
     const [allUsers, setAllUsers] = useState([]);
     const [convType, setConvType] = useState('direct');
@@ -1749,6 +1758,7 @@ export default function Dashboard() {
 
     const inputRef = useRef(null);
     const clientMessageSequenceRef = useRef(0);
+    const isSendingMessageRef = useRef(false);
     const fileInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const messageListRef = useRef(null);
@@ -1817,7 +1827,7 @@ export default function Dashboard() {
                 setMongoUserId(mongoUser._id);
                 setCurrentUserData(mongoUser);
 
-                if (!mongoUser.hasCompletedProfile) {
+                if (!mongoUser.hasCompletedProfile || !mongoUser.username) {
                     navigate('/setup');
                     return;
                 }
@@ -1978,15 +1988,29 @@ export default function Dashboard() {
 
                     setMessages((prev) => {
                         if (String(activeConversationIdRef.current) !== String(incomingMessage.conversationId)) return prev;
-                        const existingIndex = prev.findIndex(msg =>
-                            String(msg._id) === String(incomingMessage._id) ||
-                            (incomingMessage.clientMessageId && msg.clientMessageId === incomingMessage.clientMessageId)
-                        );
-                        if (existingIndex !== -1) {
+
+                        // Deduplicate: if server message already exists, update in-place without creating a duplicate
+                        const existingServerMsgIndex = prev.findIndex(msg => !msg.pending && String(msg._id) === String(incomingMessage._id));
+                        if (existingServerMsgIndex !== -1) {
                             const nextMessages = [...prev];
-                            nextMessages[existingIndex] = incomingMessage;
+                            nextMessages[existingServerMsgIndex] = { ...nextMessages[existingServerMsgIndex], ...incomingMessage };
                             return nextMessages;
                         }
+
+                        // Reconcile optimistic pending message
+                        const pendingIndex = prev.findIndex(msg =>
+                            (incomingMessage.clientMessageId && (msg.clientMessageId === incomingMessage.clientMessageId || String(msg._id) === incomingMessage.clientMessageId)) ||
+                            (msg.pending && 
+                             String(msg.sender?._id || msg.sender) === String(incomingMessage.sender?._id || incomingMessage.sender) && 
+                             msg.content === incomingMessage.content)
+                        );
+
+                        if (pendingIndex !== -1) {
+                            const nextMessages = [...prev];
+                            nextMessages[pendingIndex] = incomingMessage;
+                            return nextMessages;
+                        }
+
                         return [...prev, incomingMessage];
                     });
 
@@ -2147,16 +2171,45 @@ export default function Dashboard() {
     // 3. Handle Modal and Creating Conversations
     const openCreateModal = async () => {
         setIsModalOpen(true);
-        try {
-            const token = await getAccessTokenSilently();
-            const res = await fetch(`${BACKEND_URL}/api/users`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const users = await res.json();
-            setAllUsers(users.filter(u => u._id !== mongoUserId));
-        } catch (error) {
-            console.error('Failed to fetch users:', error);
+        setUserSearchQuery('');
+        setUserSearchResults([]);
+        setSelectedUsers([]);
+        // For communities tab (which is always group type), pre-fetch users
+        if (activeTab === 'communities') {
+            try {
+                const token = await getAccessTokenSilently();
+                const res = await fetch(`${BACKEND_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
+                const users = await res.json();
+                setAllUsers(users.filter(u => u._id !== mongoUserId));
+            } catch (err) { console.error('Failed to fetch users:', err); }
         }
+    };
+
+    const searchUsersDebounced = async (query) => {
+        if (userSearchTimerRef.current) clearTimeout(userSearchTimerRef.current);
+        const cleanQuery = normalizeUsername(query);
+        if (!cleanQuery || cleanQuery.length < 2) {
+            setUserSearchResults([]);
+            setIsSearchingUsers(false);
+            return;
+        }
+        setIsSearchingUsers(true);
+        userSearchTimerRef.current = setTimeout(async () => {
+            try {
+                const token = await getAccessTokenSilently();
+                const res = await fetch(`${BACKEND_URL}/api/users/search?username=${encodeURIComponent(cleanQuery)}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const results = await res.json();
+                    setUserSearchResults(results);
+                }
+            } catch (err) {
+                console.error('Failed to search users:', err);
+            } finally {
+                setIsSearchingUsers(false);
+            }
+        }, 350);
     };
 
     const toggleUserSelection = (userId) => {
@@ -2261,7 +2314,7 @@ export default function Dashboard() {
     const sendMessage = (payload) => {
         if (!socket || !mongoUserId || !payload?.conversationId) return;
 
-        const clientMessageId = `pending-${++clientMessageSequenceRef.current}`;
+        const clientMessageId = `pending-${Date.now()}-${++clientMessageSequenceRef.current}`;
         const optimisticMessage = {
             ...payload,
             _id: clientMessageId,
@@ -2282,18 +2335,39 @@ export default function Dashboard() {
             { ...payload, clientMessageId },
             (error, response) => {
                 if (error || !response?.ok) {
-                    setMessages(previous => previous.filter(message => message.clientMessageId !== clientMessageId));
+                    setMessages(previous => previous.filter(message => message.clientMessageId !== clientMessageId && message._id !== clientMessageId));
                     console.error('Message send failed:', error || response?.error || 'Unknown socket error');
-                    showToast('Message could not be sent. Please try again.');
+                    showToast(response?.error || 'Message could not be sent. Please try again.');
+                } else if (response?.message) {
+                    const confirmedMsg = response.message;
+                    setMessages(previous => {
+                        const index = previous.findIndex(m =>
+                            m.clientMessageId === clientMessageId ||
+                            String(m._id) === clientMessageId ||
+                            String(m._id) === String(confirmedMsg._id)
+                        );
+                        if (index !== -1) {
+                            const next = [...previous];
+                            next[index] = confirmedMsg;
+                            return next;
+                        }
+                        return previous;
+                    });
                 }
             }
         );
     };
 
     const handleSendMessage = (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
+        if (isSendingMessageRef.current) return;
         const text = messageInput.trim();
         if (!text || !socket || !mongoUserId || !activeConversationId) return;
+
+        isSendingMessageRef.current = true;
+        setMessageInput('');
+        setReplyingToMessage(null);
+        if (inputRef.current) inputRef.current.style.height = '48px';
 
         let finalIsCode = false;
         let finalLang = 'plaintext';
@@ -2319,9 +2393,61 @@ export default function Dashboard() {
 
         sendMessage(messagePayload);
 
-        setMessageInput('');
-        setReplyingToMessage(null);
-        if (inputRef.current) inputRef.current.style.height = '48px';
+        setTimeout(() => {
+            isSendingMessageRef.current = false;
+        }, 300);
+    };
+
+    const handleBlockUser = async (targetUserId, targetUserName) => {
+        try {
+            const token = await getAccessTokenSilently();
+            const res = await fetch(`${BACKEND_URL}/api/users/block/${targetUserId}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCurrentUserData(prev => ({
+                    ...prev,
+                    blockedUsers: data.blockedUsers
+                }));
+                showToast(`${targetUserName || 'User'} has been blocked.`);
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Failed to block user');
+            }
+        } catch (e) {
+            console.error('Error blocking user:', e);
+            showToast('Error blocking user');
+        }
+    };
+
+    const handleUnblockUser = async (targetUserId, targetUserName) => {
+        try {
+            const token = await getAccessTokenSilently();
+            const res = await fetch(`${BACKEND_URL}/api/users/unblock/${targetUserId}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCurrentUserData(prev => ({
+                    ...prev,
+                    blockedUsers: data.blockedUsers
+                }));
+                showToast(`${targetUserName || 'User'} has been unblocked.`);
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Failed to unblock user');
+            }
+        } catch (e) {
+            console.error('Error unblocking user:', e);
+            showToast('Error unblocking user');
+        }
     };
 
     const handleNotificationReply = (e) => {
@@ -2872,11 +2998,18 @@ export default function Dashboard() {
     };
 
     const activeConversation = conversations.find(c => c._id === activeConversationId);
+    const directChatPartner = (activeConversation && activeConversation.type !== 'group')
+        ? activeConversation.participants?.find(p => String(p._id || p) !== String(mongoUserId))
+        : null;
+    const isDirectChatBlocked = !!(
+        directChatPartner &&
+        currentUserData?.blockedUsers?.some(u => String(u._id || u) === String(directChatPartner._id || directChatPartner))
+    );
     const isSelectingCurrentMessages = isSelectingMessages && messageSelectionConversationId === activeConversationId;
     const showChatArea = !!activeConversationId || (activeTab === 'settings' && !!activeSettingTab);
 
-    const isImageUrl = (url, mimeType) => mimeType
-        ? mimeType.startsWith('image/')
+    const isImageUrl = (url, mimeType) => (mimeType && (mimeType.startsWith('image/') || mimeType === 'whiteboard'))
+        ? true
         : typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$|blob:/i) != null || url.startsWith('data:image/'));
     const isAudioUrl = (url, mimeType) => mimeType
         ? mimeType.startsWith('audio/')
@@ -3291,7 +3424,11 @@ export default function Dashboard() {
                                                         ? (conv.lastMessage.isDeletedForEveryone
                                                             ? 'This message was deleted'
                                                             : ((conv.lastMessage.sender === mongoUserId ? 'You: ' : '') +
-                                                                (conv.lastMessage.content?.includes('res.cloudinary') ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo') : conv.lastMessage.content)))
+                                                                (conv.lastMessage.attachmentType === 'whiteboard' || conv.lastMessage.content?.startsWith('data:image/') || conv.lastMessage.caption === 'View the mock-up'
+                                                                    ? '🎨 Whiteboard Mock-up'
+                                                                    : conv.lastMessage.content?.includes('res.cloudinary')
+                                                                        ? (conv.lastMessage.content.includes('video') ? '🎥 Video' : '📷 Photo')
+                                                                        : conv.lastMessage.content)))
                                                         : 'No messages yet'}
                                                 </span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3713,7 +3850,7 @@ export default function Dashboard() {
                         ) : activeSettingTab === 'Account' ? (
                             <AccountPane onBack={() => setActiveSettingTab(null)} settings={appSettings} updateSetting={updateSetting} />
                         ) : activeSettingTab === 'Privacy' ? (
-                            <PrivacyPane onBack={() => setActiveSettingTab(null)} settings={appSettings} updateSetting={updateSetting} />
+                            <PrivacyPane onBack={() => setActiveSettingTab(null)} settings={appSettings} updateSetting={updateSetting} blockedUsers={currentUserData?.blockedUsers || []} onUnblockUser={handleUnblockUser} />
                         ) : activeSettingTab === 'Chats' ? (
                             <ChatsPane onBack={() => setActiveSettingTab(null)} settings={appSettings} updateSetting={updateSetting} getAccessTokenSilently={getAccessTokenSilently} BACKEND_URL={BACKEND_URL} />
                         ) : activeSettingTab === 'Notifications' ? (
@@ -3825,7 +3962,13 @@ export default function Dashboard() {
                                                     {disappearingConversations.includes(activeConversation._id) && <Timer size={14} color="var(--colors-accent)" style={{ flexShrink: 0 }} />}
                                                 </span>
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--colors-textMuted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {activeConversation.type === 'group' ? activeConversation.participants?.map(p => p._id === mongoUserId ? 'You' : p.displayName).join(', ') : 'click here for contact info'}
+                                                    {(() => {
+                                                        if (activeConversation.type === 'group') {
+                                                            return activeConversation.participants?.map(p => p._id === mongoUserId ? 'You' : p.displayName).join(', ');
+                                                        }
+                                                        const other = activeConversation.participants?.find(p => p._id !== mongoUserId);
+                                                        return other?.username ? `@${other.username}` : 'click here for contact info';
+                                                    })()}
                                                 </span>
                                             </div>
                                         </div>
@@ -3858,10 +4001,28 @@ export default function Dashboard() {
                                             <UserPlus size={20} />
                                         </IconButton>
                                     )}
-                                    <IconButton onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'video' })} title="Video Call">
+                                    <IconButton 
+                                        onClick={() => {
+                                            if (isDirectChatBlocked) {
+                                                showToast('Cannot call a blocked contact. Unblock them first.');
+                                                return;
+                                            }
+                                            setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'video' });
+                                        }} 
+                                        title="Video Call"
+                                    >
                                         <Video size={20} />
                                     </IconButton>
-                                    <IconButton onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' })} title="Voice Call">
+                                    <IconButton 
+                                        onClick={() => {
+                                            if (isDirectChatBlocked) {
+                                                showToast('Cannot call a blocked contact. Unblock them first.');
+                                                return;
+                                            }
+                                            setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' });
+                                        }} 
+                                        title="Voice Call"
+                                    >
                                         <Phone size={20} />
                                     </IconButton>
                                     <IconButton desktopOnly onClick={() => setIsSearchOpen(!isSearchOpen)} title="Search" style={{ color: isSearchOpen ? 'var(--colors-accent)' : 'inherit' }}>
@@ -4065,7 +4226,13 @@ export default function Dashboard() {
                                                     const isOnlyUrl = (msg.content && typeof msg.content === 'string') && (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
                                                     const embedDataTop = isOnlyUrl && msg.content.trim().startsWith('http') ? detectEcosystemLink(msg.content) : null;
                                                     const isEmbedOnly = isOnlyUrl && !!embedDataTop;
-                                                    const isMediaMessage = !msg.isDeletedForEveryone && (msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content, msg.attachmentType)));
+                                                    const isWhiteboardMessage = !msg.isDeletedForEveryone && (
+                                                        msg.attachmentType === 'whiteboard' ||
+                                                        (typeof msg.content === 'string' && msg.content.startsWith('data:image/')) ||
+                                                        (typeof msg.attachmentName === 'string' && msg.attachmentName.toLowerCase().includes('whiteboard')) ||
+                                                        (typeof msg.caption === 'string' && msg.caption.toLowerCase().includes('mock-up'))
+                                                    );
+                                                    const isMediaMessage = !msg.isDeletedForEveryone && !isWhiteboardMessage && (msg.isCodeSnippet || (isOnlyUrl && isImageUrl(msg.content, msg.attachmentType)));
                                                     const isImageWithCaption = isMediaMessage && !msg.isCodeSnippet && !!msg.caption;
                                                     
                                                     const prevMsg = index > 0 ? array[index - 1] : null;
@@ -4145,6 +4312,11 @@ export default function Dashboard() {
                                                                 isOwn={isOwnMessage}
                                                                 mediaOnly={isMediaMessage}
                                                                 embedOnly={isEmbedOnly}
+                                                                style={isWhiteboardMessage ? {
+                                                                    width: 'fit-content',
+                                                                    maxWidth: '360px',
+                                                                    padding: '10px 10px 24px 10px',
+                                                                } : {}}
                                                                 onContextMenu={(e) => {
                                                                     if (!msg.isDeletedForEveryone) handleContextMenu(e, 'message', msg);
                                                                 }}
@@ -4161,10 +4333,15 @@ export default function Dashboard() {
                                                                         ...(isMediaMessage ? { padding: '6px 8px 0 8px' } : {})
                                                                     }}>
                                                                         {msg.sender?.displayName || 'Unknown User'}
+                                                                        {msg.sender?.username && (
+                                                                            <span style={{ fontSize: '0.75rem', opacity: 0.8, marginLeft: '6px', fontWeight: '400' }}>
+                                                                                @{msg.sender.username}
+                                                                            </span>
+                                                                        )}
                                                                     </SenderName>
                                                                 )}
 
-                                                                <div style={{ wordBreak: 'break-word', marginTop: showSenderName && !isMediaMessage ? '2px' : '0', maxWidth: isImageWithCaption ? '300px' : 'none' }}>
+                                                                <div style={{ wordBreak: 'break-word', marginTop: showSenderName && !isMediaMessage ? '2px' : '0', maxWidth: isImageWithCaption ? '300px' : isWhiteboardMessage ? '340px' : 'none' }}>
                                                                     {msg.isDeletedForEveryone ? (
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--colors-textMuted)', fontStyle: 'italic' }}>
                                                                             <Trash2 size={14} />
@@ -4242,14 +4419,161 @@ export default function Dashboard() {
 
                                                                         // Check if message is strictly just a URL
                                                                         const isOnlyUrl = (msg.content.trim().startsWith('http') || msg.content.trim().startsWith('data:')) && !msg.content.trim().includes(' ');
-                                                                        const hasAttachment = embedData || isImageUrl(msg.content, msg.attachmentType) || isAudioUrl(msg.content, msg.attachmentType) || isVideoUrl(msg.content, msg.attachmentType) || isCloudinaryUrl(msg.content);
-                                                                        const shouldShowText = !(isOnlyUrl && hasAttachment);
+                                                                        const hasAttachment = embedData || isWhiteboardMessage || isImageUrl(msg.content, msg.attachmentType) || isAudioUrl(msg.content, msg.attachmentType) || isVideoUrl(msg.content, msg.attachmentType) || isCloudinaryUrl(msg.content);
+                                                                        const shouldShowText = !(isOnlyUrl && hasAttachment) && !isWhiteboardMessage;
 
                                                                         return (
                                                                             <>
                                                                                 {shouldShowText && (
                                                                                     <div style={{ whiteSpace: 'pre-wrap' }}>
                                                                                         {msg.content}
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {isWhiteboardMessage && (
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', minWidth: '260px' }}>
+                                                                                        {/* Card Header */}
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', fontSize: '0.88rem', color: isOwnMessage ? '#ffffff' : 'var(--colors-textMain)' }}>
+                                                                                                <Brush size={15} style={{ color: '#06b6d4' }} />
+                                                                                                <span>Whiteboard Mock-up</span>
+                                                                                            </div>
+                                                                                            <span style={{ 
+                                                                                                fontSize: '0.7rem', 
+                                                                                                fontWeight: '600', 
+                                                                                                textTransform: 'uppercase', 
+                                                                                                letterSpacing: '0.5px', 
+                                                                                                padding: '2px 6px', 
+                                                                                                borderRadius: '6px', 
+                                                                                                backgroundColor: isOwnMessage ? 'rgba(255,255,255,0.18)' : 'rgba(6, 182, 212, 0.18)', 
+                                                                                                color: isOwnMessage ? '#ffffff' : '#06b6d4' 
+                                                                                            }}>
+                                                                                                Design
+                                                                                            </span>
+                                                                                        </div>
+
+                                                                                        {/* Mock-up Preview Thumbnail */}
+                                                                                        <div 
+                                                                                            onClick={() => openMediaViewer(msg.content, 'image', 'Whiteboard Mock-up')}
+                                                                                            title="Click to view full mock-up"
+                                                                                            style={{
+                                                                                                position: 'relative',
+                                                                                                borderRadius: '8px',
+                                                                                                overflow: 'hidden',
+                                                                                                backgroundColor: '#0a0f1d',
+                                                                                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                                                                cursor: 'pointer',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                justifyContent: 'center',
+                                                                                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+                                                                                                transition: 'border-color 0.15s ease',
+                                                                                            }}
+                                                                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#06b6d4'; }}
+                                                                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'; }}
+                                                                                        >
+                                                                                            <img 
+                                                                                                src={msg.content} 
+                                                                                                alt="Whiteboard Mock-up" 
+                                                                                                style={{ 
+                                                                                                    display: 'block', 
+                                                                                                    width: '100%', 
+                                                                                                    maxHeight: '220px', 
+                                                                                                    objectFit: 'contain' 
+                                                                                                }} 
+                                                                                            />
+                                                                                            {/* Zoom overlay badge */}
+                                                                                            <div style={{
+                                                                                                position: 'absolute',
+                                                                                                top: '6px',
+                                                                                                right: '6px',
+                                                                                                padding: '4px',
+                                                                                                borderRadius: '50%',
+                                                                                                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                                                                                                color: '#ffffff',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                justifyContent: 'center'
+                                                                                            }}>
+                                                                                                <Maximize2 size={13} />
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {/* Action Buttons */}
+                                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => openMediaViewer(msg.content, 'image', 'Whiteboard Mock-up')}
+                                                                                                style={{
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    justifyContent: 'center',
+                                                                                                    gap: '8px',
+                                                                                                    width: '100%',
+                                                                                                    padding: '8px 14px',
+                                                                                                    borderRadius: '8px',
+                                                                                                    backgroundColor: isOwnMessage ? 'rgba(255, 255, 255, 0.22)' : 'rgba(6, 182, 212, 0.22)',
+                                                                                                    border: `1px solid ${isOwnMessage ? 'rgba(255, 255, 255, 0.35)' : 'rgba(6, 182, 212, 0.45)'}`,
+                                                                                                    color: '#ffffff',
+                                                                                                    fontSize: '0.85rem',
+                                                                                                    fontWeight: '600',
+                                                                                                    cursor: 'pointer',
+                                                                                                    transition: 'all 0.2s ease',
+                                                                                                    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)'
+                                                                                                }}
+                                                                                                onMouseEnter={(e) => {
+                                                                                                    e.currentTarget.style.backgroundColor = isOwnMessage ? 'rgba(255, 255, 255, 0.32)' : 'rgba(6, 182, 212, 0.35)';
+                                                                                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                                                                                }}
+                                                                                                onMouseLeave={(e) => {
+                                                                                                    e.currentTarget.style.backgroundColor = isOwnMessage ? 'rgba(255, 255, 255, 0.22)' : 'rgba(6, 182, 212, 0.22)';
+                                                                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                                                                }}
+                                                                                            >
+                                                                                                <Maximize2 size={14} />
+                                                                                                <span>View the mock-up</span>
+                                                                                            </button>
+
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => {
+                                                                                                    if (isMobileViewport) {
+                                                                                                        setMobileWhiteboardDesign(msg.content);
+                                                                                                    } else if (activeTab === 'communities') {
+                                                                                                        setCommunityTab('live coding');
+                                                                                                    } else {
+                                                                                                        setIsWhiteboardOpen(true);
+                                                                                                    }
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    justifyContent: 'center',
+                                                                                                    gap: '6px',
+                                                                                                    width: '100%',
+                                                                                                    padding: '4px 8px',
+                                                                                                    background: 'transparent',
+                                                                                                    border: 'none',
+                                                                                                    color: isOwnMessage ? 'rgba(255, 255, 255, 0.85)' : '#06b6d4',
+                                                                                                    fontSize: '0.78rem',
+                                                                                                    fontWeight: '500',
+                                                                                                    cursor: 'pointer',
+                                                                                                    opacity: 0.9,
+                                                                                                    transition: 'opacity 0.2s ease'
+                                                                                                }}
+                                                                                                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                                                                                                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.9'; }}
+                                                                                            >
+                                                                                                <Brush size={12} />
+                                                                                                <span>Open in Whiteboard</span>
+                                                                                            </button>
+                                                                                        </div>
+
+                                                                                        {msg.caption && msg.caption !== 'View the mock-up' && (
+                                                                                            <div style={{ fontSize: '0.82rem', opacity: 0.9, marginTop: '2px', padding: '0 2px' }}>
+                                                                                                {msg.caption}
+                                                                                            </div>
+                                                                                        )}
                                                                                     </div>
                                                                                 )}
 
@@ -4298,30 +4622,16 @@ export default function Dashboard() {
                                                                                     </div>
                                                                                 )}
 
-                                                                                {isImageUrl(msg.content, msg.attachmentType) && (
-                                                                                    msg.content.startsWith('data:image/') ? (
-                                                                                        <div onClick={() => {
-                                                                                            if (isMobileViewport) {
-                                                                                                setMobileWhiteboardDesign(msg.content);
-                                                                                            } else if (activeTab === 'communities') {
-                                                                                                setCommunityTab('live coding');
-                                                                                            } else {
-                                                                                                setIsWhiteboardOpen(true);
-                                                                                            }
-                                                                                        }} title={isMobileViewport ? 'View design' : 'Open Whiteboard'} style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', cursor: 'pointer' }}>
-                                                                                            <AttachmentImage src={msg.content} alt="Whiteboard design" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => openMediaViewer(msg.content, 'image', msg.attachmentName || 'Photo')}
-                                                                                            aria-label="View photo fullscreen"
-                                                                                            title="View fullscreen"
-                                                                                            style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
-                                                                                        >
-                                                                                            <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
-                                                                                        </button>
-                                                                                    )
+                                                                                {isImageUrl(msg.content, msg.attachmentType) && !isWhiteboardMessage && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => openMediaViewer(msg.content, 'image', msg.attachmentName || 'Photo')}
+                                                                                        aria-label="View photo fullscreen"
+                                                                                        title="View fullscreen"
+                                                                                        style={{ display: 'block', marginTop: isMediaMessage ? '0' : '8px', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+                                                                                    >
+                                                                                        <AttachmentImage src={msg.content} alt="User attachment" style={isMediaMessage ? { width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '8px' } : {}} />
+                                                                                    </button>
                                                                                 )}
 
                                                                                 {isAudioUrl(msg.content, msg.attachmentType) && (
@@ -4335,7 +4645,7 @@ export default function Dashboard() {
                                                                                     </AttachmentLink>
                                                                                 )}
 
-                                                                                {msg.caption && (
+                                                                                {msg.caption && !isWhiteboardMessage && (
                                                                                     <div style={{ whiteSpace: 'pre-wrap', marginTop: '4px', padding: isMediaMessage ? '4px 6px 4px 6px' : '4px 0', borderTop: isMediaMessage ? 'none' : '1px solid rgba(255,255,255,0.1)' }}>
                                                                                         {msg.caption}
                                                                                     </div>
@@ -4440,53 +4750,94 @@ export default function Dashboard() {
                                                     </IconButton>
                                                 </div>
                                             )}
-                                            <InputArea onSubmit={handleSendMessage} style={{ borderTop: 'none', backgroundColor: 'transparent' }}>
-                                                <input
-                                                    type="file"
-                                                    ref={fileInputRef}
-                                                    style={{ display: 'none' }}
-                                                    onChange={handleFileSelect}
-                                                    accept="*/*"
-                                                />
-
-                                                <AttachButton
-                                                    type="button"
-                                                    title="Attach a file or video"
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                    disabled={isUploading || isRecording}
-                                                >
-                                                    {isUploading ? <Spinner /> : <PlusIcon />}
-                                                </AttachButton>
-
-                                                {isRecording ? (
-                                                    <VoiceRecordingIndicator time={recordingTime} />
-                                                ) : (
-                                                    <Input
-                                                        ref={inputRef}
-                                                        placeholder="Message..."
-                                                        value={messageInput}
-                                                        onChange={handleInputChange}
-                                                        onKeyDown={handleKeyDown}
-                                                        rows={1}
-                                                    />
-                                                )}
-
-                                                {messageInput.trim().length > 0 ? (
-                                                    <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
-                                                        <SendIcon />
-                                                    </SendButton>
-                                                ) : (
-                                                    <SendButton
+                                            {isDirectChatBlocked ? (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '14px 20px',
+                                                    margin: '8px 16px',
+                                                    borderRadius: '12px',
+                                                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                                    gap: '12px'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <ShieldAlert size={20} color="#ef4444" />
+                                                        <span style={{ fontSize: '0.92rem', color: 'var(--colors-textMain)', fontWeight: '500' }}>
+                                                            You blocked this contact. Unblock to send messages.
+                                                        </span>
+                                                    </div>
+                                                    <button
                                                         type="button"
-                                                        title={isRecording ? "Stop Recording" : "Record Voice Note"}
-                                                        onClick={isRecording ? stopRecording : startRecording}
-                                                        disabled={isUploading}
-                                                        style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                        onClick={() => handleUnblockUser(directChatPartner?._id, directChatPartner?.displayName)}
+                                                        style={{
+                                                            padding: '6px 16px',
+                                                            backgroundColor: '#ef4444',
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '8px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: '600',
+                                                            transition: 'opacity 0.2s',
+                                                            flexShrink: 0
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.opacity = '0.85'}
+                                                        onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                                                     >
-                                                        {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
-                                                    </SendButton>
-                                                )}
-                                            </InputArea>
+                                                        Unblock
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <InputArea onSubmit={handleSendMessage} style={{ borderTop: 'none', backgroundColor: 'transparent' }}>
+                                                    <input
+                                                        type="file"
+                                                        ref={fileInputRef}
+                                                        style={{ display: 'none' }}
+                                                        onChange={handleFileSelect}
+                                                        accept="*/*"
+                                                    />
+
+                                                    <AttachButton
+                                                        type="button"
+                                                        title="Attach a file or video"
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        disabled={isUploading || isRecording}
+                                                    >
+                                                        {isUploading ? <Spinner /> : <PlusIcon />}
+                                                    </AttachButton>
+
+                                                    {isRecording ? (
+                                                        <VoiceRecordingIndicator time={recordingTime} />
+                                                    ) : (
+                                                        <Input
+                                                            ref={inputRef}
+                                                            placeholder="Message..."
+                                                            value={messageInput}
+                                                            onChange={handleInputChange}
+                                                            onKeyDown={handleKeyDown}
+                                                            rows={1}
+                                                        />
+                                                    )}
+
+                                                    {messageInput.trim().length > 0 ? (
+                                                        <SendButton type="submit" title="Send Message" disabled={isUploading || isRecording}>
+                                                            <SendIcon />
+                                                        </SendButton>
+                                                    ) : (
+                                                        <SendButton
+                                                            type="button"
+                                                            title={isRecording ? "Stop Recording" : "Record Voice Note"}
+                                                            onClick={isRecording ? stopRecording : startRecording}
+                                                            disabled={isUploading}
+                                                            style={isRecording ? { backgroundColor: 'var(--colors-danger)' } : {}}
+                                                        >
+                                                            {isRecording ? <Square size={20} /> : <CustomMicIcon size={20} />}
+                                                        </SendButton>
+                                                    )}
+                                                </InputArea>
+                                            )}
                                         </div>
                                     )}
                                 </>
@@ -4502,7 +4853,9 @@ export default function Dashboard() {
                                                 conversationId: activeConversationId,
                                                 senderId: mongoUserId,
                                                 content: dataUrl,
-                                                attachmentType: 'image/jpeg',
+                                                attachmentType: 'whiteboard',
+                                                attachmentName: 'Whiteboard Mock-up',
+                                                caption: 'View the mock-up',
                                                 isCodeSnippet: false,
                                                 language: 'plaintext'
                                             });
@@ -4711,11 +5064,23 @@ export default function Dashboard() {
                                     />
                                 )}
                             </label>
-                            <h2 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', color: 'var(--colors-textMain)' }}>
-                                {activeConversation.type === 'group' ? activeConversation.name : activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}
-                            </h2>
-                            {activeConversation.type === 'group' && <span style={{ color: 'var(--colors-textMuted)', fontSize: '1rem', marginBottom: '16px' }}>Group • {activeConversation.participants?.length || 0} participants</span>}
-                            {(!activeConversation.type || activeConversation.type === 'direct') ? <span style={{ color: 'var(--colors-textMuted)', fontSize: '1rem', marginBottom: '16px' }}>{activeConversation.participants?.find(p => p._id !== mongoUserId)?.techDiscipline || 'Available'}</span> : null}
+                            {(() => {
+                                const other = activeConversation.participants?.find(p => p._id !== mongoUserId);
+                                return (
+                                    <>
+                                        <h2 style={{ margin: '0 0 4px 0', fontSize: '1.4rem', color: 'var(--colors-textMain)' }}>
+                                            {activeConversation.type === 'group' ? activeConversation.name : (other?.displayName || 'User')}
+                                        </h2>
+                                        {(!activeConversation.type || activeConversation.type === 'direct') && other?.username && (
+                                            <div style={{ color: 'var(--colors-accent)', fontSize: '0.95rem', fontWeight: '600', marginBottom: '8px' }}>
+                                                @{other.username}
+                                            </div>
+                                        )}
+                                        {activeConversation.type === 'group' && <span style={{ color: 'var(--colors-textMuted)', fontSize: '1rem', marginBottom: '16px' }}>Group • {activeConversation.participants?.length || 0} participants</span>}
+                                        {(!activeConversation.type || activeConversation.type === 'direct') ? <span style={{ color: 'var(--colors-textMuted)', fontSize: '0.95rem', marginBottom: '16px' }}>{other?.techDiscipline || 'Available'}</span> : null}
+                                    </>
+                                );
+                            })()}
 
                             <div style={{ display: 'flex', gap: '32px', marginTop: '8px' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--colors-accent)' }} onClick={() => setCallConfig({ active: true, isReceiving: false, callerData: null, callType: 'audio' })}>
@@ -4880,7 +5245,7 @@ export default function Dashboard() {
                                                     {participant._id === mongoUserId ? 'You' : participant.displayName}
                                                 </span>
                                                 <span style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem' }}>
-                                                    {participant.techDiscipline || 'Fullstack'}
+                                                    {participant.username ? `@${participant.username}` : (participant.techDiscipline || 'Fullstack')}
                                                 </span>
                                             </div>
                                         </div>
@@ -4899,15 +5264,27 @@ export default function Dashboard() {
                                 </ContactMenuItem>
                                 {(!activeConversation.type || activeConversation.type === 'direct') && (
                                     <>
-                                        <ContactMenuItem style={{ color: '#ef4444' }} onClick={() => {
-                                            const userToBlock = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
-                                            if (window.confirm(`Are you sure you want to block ${userToBlock}?`)) {
-                                                showToast(`User ${userToBlock} has been blocked.`);
-                                            }
-                                        }}>
-                                            <ShieldAlert size={24} color="#ef4444" />
-                                            <span style={{ fontSize: '1rem', fontWeight: '500' }}>Block {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
-                                        </ContactMenuItem>
+                                        {isDirectChatBlocked ? (
+                                            <ContactMenuItem style={{ color: 'var(--colors-accent)' }} onClick={() => {
+                                                const target = activeConversation.participants?.find(p => p._id !== mongoUserId);
+                                                if (window.confirm(`Are you sure you want to unblock ${target?.displayName}?`)) {
+                                                    handleUnblockUser(target?._id, target?.displayName);
+                                                }
+                                            }}>
+                                                <ShieldCheck size={24} color="var(--colors-accent)" />
+                                                <span style={{ fontSize: '1rem', fontWeight: '500' }}>Unblock {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
+                                            </ContactMenuItem>
+                                        ) : (
+                                            <ContactMenuItem style={{ color: '#ef4444' }} onClick={() => {
+                                                const target = activeConversation.participants?.find(p => p._id !== mongoUserId);
+                                                if (window.confirm(`Are you sure you want to block ${target?.displayName}? You will not be able to exchange messages or calls.`)) {
+                                                    handleBlockUser(target?._id, target?.displayName);
+                                                }
+                                            }}>
+                                                <ShieldAlert size={24} color="#ef4444" />
+                                                <span style={{ fontSize: '1rem', fontWeight: '500' }}>Block {activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName}</span>
+                                            </ContactMenuItem>
+                                        )}
                                         <ContactMenuItem style={{ color: '#ef4444' }} onClick={() => {
                                             const userToReport = activeConversation.participants?.find(p => p._id !== mongoUserId)?.displayName;
                                             if (window.confirm(`Are you sure you want to report ${userToReport}?`)) {
@@ -4996,7 +5373,9 @@ export default function Dashboard() {
                             conversationId: activeConversationId,
                             senderId: mongoUserId,
                             content: dataUrl,
-                            attachmentType: 'image/jpeg',
+                            attachmentType: 'whiteboard',
+                            attachmentName: 'Whiteboard Mock-up',
+                            caption: 'View the mock-up',
                             isCodeSnippet: false,
                             language: 'plaintext'
                         });
@@ -5040,7 +5419,21 @@ export default function Dashboard() {
                                     Direct Message
                                 </div>
                                 <div
-                                    onClick={() => { setConvType('group'); setSelectedUsers([]); }}
+                                    onClick={async () => { 
+                                        setConvType('group'); 
+                                        setSelectedUsers([]); 
+                                        setUserSearchQuery('');
+                                        setUserSearchResults([]);
+                                        // Fetch all users for group contacts list
+                                        if (allUsers.length === 0) {
+                                            try {
+                                                const token = await getAccessTokenSilently();
+                                                const res = await fetch(`${BACKEND_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
+                                                const users = await res.json();
+                                                setAllUsers(users.filter(u => u._id !== mongoUserId));
+                                            } catch (err) { console.error('Failed to fetch users:', err); }
+                                        }
+                                    }}
                                     style={{ flex: 1, padding: '10px', textAlign: 'center', cursor: 'pointer', borderRadius: '8px', backgroundColor: convType === 'group' ? 'var(--colors-surface)' : 'transparent', color: convType === 'group' ? 'var(--colors-accent)' : 'var(--colors-textMuted)', border: convType === 'group' ? '1px solid var(--colors-border)' : '1px solid transparent', transition: 'all 0.2s ease', fontWeight: convType === 'group' ? '600' : '500', boxShadow: convType === 'group' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none' }}
                                 >
                                     Group Channel
@@ -5094,18 +5487,26 @@ export default function Dashboard() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Label style={{ margin: 0, fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>Select User(s)</Label>
+                                <Label style={{ margin: 0, fontSize: '0.9rem', color: 'var(--colors-textMuted)' }}>
+                                    {convType === 'direct' ? 'Find by @username' : 'Select Members'}
+                                </Label>
                                 {convType === 'group' && <span style={{fontSize: '0.8rem', color: 'var(--colors-accent)', fontWeight: '600'}}>Your Contacts</span>}
                             </div>
                             
                             <div style={{ position: 'relative' }}>
-                                <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--colors-textMuted)', pointerEvents: 'none', transition: 'color 0.3s ease' }} id="new-conv-search-icon">
-                                    <Search size={18} />
+                                <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--colors-textMuted)', pointerEvents: 'none', transition: 'color 0.3s ease', fontWeight: convType === 'direct' ? '600' : '400', fontSize: convType === 'direct' ? '1rem' : '0.9rem' }} id="new-conv-search-icon">
+                                    {convType === 'direct' ? '@' : <Search size={18} />}
                                 </div>
                                 <ModalInput
-                                    placeholder="Search by name..."
+                                    placeholder={convType === 'direct' ? 'Search by username (e.g. blossom123 or @blossom123)...' : 'Filter by name or @username...'}
                                     value={userSearchQuery}
-                                    onChange={e => setUserSearchQuery(e.target.value)}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setUserSearchQuery(val);
+                                        if (convType === 'direct') {
+                                            searchUsersDebounced(val);
+                                        }
+                                    }}
                                     style={{ 
                                         padding: '16px 16px 16px 44px', 
                                         borderRadius: '16px', 
@@ -5139,13 +5540,96 @@ export default function Dashboard() {
                                 padding: '8px 0',
                                 marginTop: '4px'
                             }}>
-                                {(() => {
-                                    let displayedUsers = allUsers;
-                                    if (convType === 'group') {
-                                        const contactIds = [...new Set(conversations.filter(c => c.type === 'direct').flatMap(c => c.participants.map(p => p?._id)).filter(id => id && id !== mongoUserId))];
-                                        displayedUsers = allUsers.filter(u => contactIds.includes(u._id));
+                                {convType === 'direct' ? (() => {
+                                    // Direct: username search results
+                                    const cleanSearch = normalizeUsername(userSearchQuery);
+                                    if (!cleanSearch || cleanSearch.length < 2) {
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '180px', padding: '20px', gap: '12px' }}>
+                                                <div style={{ padding: '16px', borderRadius: '50%', backgroundColor: 'var(--colors-surface)', border: '1px solid var(--colors-border)' }}>
+                                                    <Search size={28} color="var(--colors-textMuted)" strokeWidth={1.5} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', textAlign: 'center' }}>
+                                                    <div style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: 'bold' }}>Search by @username</div>
+                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.82rem' }}>Type at least 2 characters to find a user</div>
+                                                </div>
+                                            </div>
+                                        );
                                     }
-                                    const filtered = displayedUsers.filter(u => u.displayName?.toLowerCase().includes(userSearchQuery.toLowerCase()));
+                                    if (isSearchingUsers) {
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '180px', gap: '10px', color: 'var(--colors-textMuted)' }}>
+                                                <div style={{ width: '18px', height: '18px', border: '2px solid var(--colors-accent)', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                                Searching...
+                                            </div>
+                                        );
+                                    }
+                                    if (userSearchResults.length === 0) {
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '180px', padding: '20px', gap: '12px' }}>
+                                                <div style={{ padding: '16px', borderRadius: '50%', backgroundColor: 'var(--colors-surface)', border: '1px solid var(--colors-border)' }}>
+                                                    <Users size={28} color="var(--colors-textMuted)" strokeWidth={1.5} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                    <div style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: 'bold' }}>No users found</div>
+                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.82rem', textAlign: 'center' }}>No user with that username exists</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    return userSearchResults.map(u => (
+                                        <div
+                                            key={u._id}
+                                            onClick={() => toggleUserSelection(u._id)}
+                                            style={{ 
+                                                padding: '12px 16px', 
+                                                margin: '4px 12px',
+                                                borderRadius: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '14px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease',
+                                                backgroundColor: selectedUsers.includes(u._id) ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                                                border: '1px solid ' + (selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'transparent')
+                                            }}
+                                            onMouseEnter={(e) => { if (!selectedUsers.includes(u._id)) { e.currentTarget.style.backgroundColor = 'var(--colors-surface)'; e.currentTarget.style.borderColor = 'var(--colors-border)'; } }}
+                                            onMouseLeave={(e) => { if (!selectedUsers.includes(u._id)) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
+                                        >
+                                            <AvatarWrapper>
+                                                <Avatar src={u.avatarUrl} style={{ width: '40px', height: '40px', border: selectedUsers.includes(u._id) ? '2px solid var(--colors-accent)' : '2px solid var(--colors-surface)' }} />
+                                                {activeUsers.includes(u._id) && <OnlineDot style={{ width: '12px', height: '12px', bottom: '-2px', right: '-2px', border: '2.5px solid var(--colors-bg)' }} />}
+                                            </AvatarWrapper>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
+                                                <span style={{ color: 'var(--colors-accent)', fontSize: '0.78rem', fontWeight: '500' }}>@{u.username}</span>
+                                            </div>
+                                            <div style={{ 
+                                                width: '22px', 
+                                                height: '22px', 
+                                                borderRadius: '6px', 
+                                                border: selectedUsers.includes(u._id) ? 'none' : '2px solid var(--colors-border)',
+                                                backgroundColor: selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-surface)',
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                boxShadow: selectedUsers.includes(u._id) ? '0 0 10px rgba(6, 182, 212, 0.5)' : 'none',
+                                                transform: selectedUsers.includes(u._id) ? 'scale(1.05)' : 'scale(1)'
+                                            }}>
+                                                {selectedUsers.includes(u._id) && (
+                                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'popIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}>
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ));
+                                })() : (() => {
+                                    // Group: use contacts list filtered by name
+                                    const contactIds = [...new Set(conversations.filter(c => c.type === 'direct').flatMap(c => c.participants.map(p => p?._id)).filter(id => id && id !== mongoUserId))];
+                                    const displayedUsers = allUsers.filter(u => contactIds.includes(u._id));
+                                    const filtered = displayedUsers.filter(u => u.displayName?.toLowerCase().includes(userSearchQuery.toLowerCase()) || u.username?.toLowerCase().includes(userSearchQuery.toLowerCase()));
                                     
                                     if (filtered.length === 0) {
                                         return (
@@ -5154,8 +5638,8 @@ export default function Dashboard() {
                                                     <Users size={32} color="var(--colors-textMuted)" strokeWidth={1.5} />
                                                 </div>
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                                    <div style={{ color: 'var(--colors-textMain)', fontSize: '1rem', fontWeight: 'bold' }}>{convType === 'group' ? 'No contacts found' : 'No users found'}</div>
-                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>{convType === 'group' ? 'Start a direct chat with someone first!' : 'Try searching for a different name'}</div>
+                                                    <div style={{ color: 'var(--colors-textMain)', fontSize: '1rem', fontWeight: 'bold' }}>No contacts found</div>
+                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.85rem', textAlign: 'center' }}>Start a direct chat with someone first!</div>
                                                 </div>
                                             </div>
                                         );
@@ -5186,7 +5670,7 @@ export default function Dashboard() {
                                             </AvatarWrapper>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
                                                 <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
-                                                <span style={{ color: selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>{u.techDiscipline || 'Fullstack'}</span>
+                                                <span style={{ color: selectedUsers.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>{u.username ? `@${u.username}` : (u.techDiscipline || 'Fullstack')}</span>
                                             </div>
                                             
                                             {/* DevSup Premium Checkbox */}
@@ -5312,7 +5796,11 @@ export default function Dashboard() {
                                 const existingMemberIds = activeConversation.participants?.map(p => p._id) || [];
                                 
                                 const availableContacts = allUsers.filter(u => contactIds.includes(u._id) && !existingMemberIds.includes(u._id));
-                                const filtered = availableContacts.filter(u => u.displayName?.toLowerCase().includes(addMembersSearchQuery.toLowerCase()));
+                                const cleanQ = normalizeUsername(addMembersSearchQuery);
+                                const filtered = availableContacts.filter(u => 
+                                    u.displayName?.toLowerCase().includes(addMembersSearchQuery.toLowerCase()) || 
+                                    (cleanQ && u.username?.toLowerCase().includes(cleanQ))
+                                );
                                 
                                 if (filtered.length === 0) {
                                     return (
@@ -5357,7 +5845,9 @@ export default function Dashboard() {
                                         </AvatarWrapper>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
                                             <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
-                                            <span style={{ color: selectedMembersToAdd.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>{u.techDiscipline || 'Fullstack'}</span>
+                                            <span style={{ color: selectedMembersToAdd.includes(u._id) ? 'var(--colors-accent)' : 'var(--colors-textMuted)', fontSize: '0.75rem', transition: 'color 0.2s ease' }}>
+                                                {u.username ? `@${u.username}` : (u.techDiscipline || 'Fullstack')}
+                                            </span>
                                         </div>
                                         
                                         {/* DevSup Premium Checkbox */}

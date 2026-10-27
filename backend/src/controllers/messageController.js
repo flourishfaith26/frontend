@@ -15,11 +15,11 @@ export const getMessages = async (req, res) => {
       conversationId,
       deletedFor: { $ne: currentUser._id } 
     })
-      .populate('sender', 'displayName avatarUrl')
+      .populate('sender', 'displayName avatarUrl username')
       .populate({
         path: 'replyTo',
         select: 'content sender isCodeSnippet caption isDeletedForEveryone',
-        populate: { path: 'sender', select: 'displayName' }
+        populate: { path: 'sender', select: 'displayName username' }
       })
       .sort({ sequence: 1, createdAt: 1, _id: 1 });
 

@@ -29,8 +29,8 @@ export const createStatus = async (req, res) => {
     
     // Populate uploader for the immediate response
     const populatedStatus = await Status.findById(savedStatus._id)
-      .populate('uploader', 'displayName avatarUrl')
-      .populate('viewers', 'displayName avatarUrl');
+      .populate('uploader', 'displayName avatarUrl username')
+      .populate('viewers', 'displayName avatarUrl username');
 
     res.status(201).json(populatedStatus);
   } catch (error) {
@@ -66,8 +66,8 @@ export const getStatuses = async (req, res) => {
       uploader: { $in: Array.from(contactIds) },
       createdAt: { $gt: twentyFourHoursAgo }
     })
-    .populate('uploader', 'displayName avatarUrl')
-    .populate('viewers', 'displayName avatarUrl')
+    .populate('uploader', 'displayName avatarUrl username')
+    .populate('viewers', 'displayName avatarUrl username')
     .sort({ createdAt: 1 }); // Sort oldest first (natural order for stories)
 
     res.status(200).json(statuses);

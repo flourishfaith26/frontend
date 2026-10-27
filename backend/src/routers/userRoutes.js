@@ -1,5 +1,14 @@
 import express from 'express';
-import { syncUser, getAllUsers, updateProfile } from '../controllers/userController.js';
+import { 
+    syncUser, 
+    getAllUsers, 
+    updateProfile, 
+    searchByUsername, 
+    checkUsernameAvailability,
+    blockUser,
+    unblockUser,
+    getBlockedUsers
+} from '../controllers/userController.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -7,5 +16,10 @@ const router = express.Router();
 router.post('/sync', requireAuth, syncUser);
 router.get('/', requireAuth, getAllUsers); 
 router.put('/profile', requireAuth, updateProfile);
+router.get('/search', requireAuth, searchByUsername);
+router.get('/check-username', requireAuth, checkUsernameAvailability);
+router.post('/block/:targetUserId', requireAuth, blockUser);
+router.post('/unblock/:targetUserId', requireAuth, unblockUser);
+router.get('/blocked', requireAuth, getBlockedUsers);
 
-export default router;
+export default router;

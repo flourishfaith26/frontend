@@ -10,6 +10,14 @@ const userSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true,
+    match: [/^[a-z0-9._]{3,30}$/, 'Username must be 3-30 characters and can only contain lowercase letters, numbers, underscores (_), and periods (.)']
+  },
   email: { 
     type: String, 
     required: true, 
@@ -59,7 +67,11 @@ const userSchema = new mongoose.Schema({
   readReceipts: {
     type: Boolean,
     default: true
-  }
+  },
+  blockedUsers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

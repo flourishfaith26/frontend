@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import { normalizeUsername, validateUsernameFormat } from '../utils/username.js';
 
 export const syncUser = async (req, res) => {
   try {
@@ -20,6 +21,8 @@ export const syncUser = async (req, res) => {
       await user.save();
     }
 
+    await user.populate('blockedUsers', '_id displayName username avatarUrl techDiscipline about');
+
     res.status(200).json(user);
   } catch (error) {
     console.error('Error syncing user:', error);
@@ -40,7 +43,7 @@ export const getAllUsers = async (req, res) => {
 export const updateProfile = async (req, res) => {
     try {
         const auth0Id = req.auth.payload.sub;
-        const { displayName, avatarUrl, about, techDiscipline, githubProfile, linkedinProfile, portfolioUrl, verificationProof, hasCompletedProfile, readReceipts } = req.body;
+        const { displayName, avatarUrl, about, techDiscipline, githubProfile, linkedinProfile, portfolioUrl, verificationProof, hasCompletedProfile, readReceipts, username } = req.body;
 
         const updateData = {};
         if (displayName !== undefined) updateData.displayName = displayName;
@@ -53,17 +56,192 @@ export const updateProfile = async (req, res) => {
         if (verificationProof !== undefined) updateData.verificationProof = verificationProof;
         if (hasCompletedProfile !== undefined) updateData.hasCompletedProfile = hasCompletedProfile;
         if (readReceipts !== undefined) updateData.readReceipts = readReceipts;
+        
+        if (username !== undefined) {
+            const cleanUsername = normalizeUsername(username);
+            const validation = validateUsernameFormat(cleanUsername);
+            if (!validation.isValid) {
+                return res.status(400).json({ message: validation.error });
+            }
+
+            // Check if username is already taken by another user
+            const existing = await User.findOne({
+                username: cleanUsername,
+                auth0Id: { $ne: auth0Id }
+            });
+            if (existing) {
+                return res.status(409).json({ message: `@${cleanUsername} is already taken. Please choose another.` });
+            }
+
+            updateData.username = cleanUsername;
+        }
 
         const user = await User.findOneAndUpdate(
             { auth0Id },
             { $set: updateData },
-            { new: true }
+            { new: true, runValidators: true }
         );
 
         if (!user) return res.status(404).json({ message: 'User not found' });
         res.status(200).json(user);
     } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({ message: 'Username is already taken. Please choose another.' });
+        }
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: error.message });
+        }
         console.error('Error updating profile:', error);
         res.status(500).json({ message: 'Internal server error updating profile' });
+    }
+};
+
+export const checkUsernameAvailability = async (req, res) => {
+    try {
+        const { username } = req.query;
+        if (!username) {
+            return res.status(400).json({ available: false, message: 'Username is required.' });
+        }
+
+        const cleanUsername = normalizeUsername(username);
+        const validation = validateUsernameFormat(cleanUsername);
+        if (!validation.isValid) {
+            return res.status(200).json({ 
+                available: false, 
+                normalized: cleanUsername,
+                message: validation.error 
+            });
+        }
+
+        const auth0Id = req.auth.payload.sub;
+        const existing = await User.findOne({ 
+            username: cleanUsername, 
+            auth0Id: { $ne: auth0Id } 
+        });
+
+        if (existing) {
+            return res.status(200).json({ 
+                available: false, 
+                normalized: cleanUsername,
+                message: `@${cleanUsername} is already taken.` 
+            });
+        }
+
+        return res.status(200).json({ 
+            available: true, 
+            normalized: cleanUsername,
+            message: `@${cleanUsername} is available!` 
+        });
+    } catch (error) {
+        console.error('Error checking username availability:', error);
+        res.status(500).json({ available: false, message: 'Server error checking username.' });
+    }
+};
+
+export const searchByUsername = async (req, res) => {
+    try {
+        const { username } = req.query;
+        if (!username) {
+            return res.status(400).json({ message: 'Username query must be at least 2 characters.' });
+        }
+        const cleanQuery = normalizeUsername(username);
+        if (cleanQuery.length < 2) {
+            return res.status(400).json({ message: 'Username query must be at least 2 characters.' });
+        }
+        const auth0Id = req.auth.payload.sub;
+        const currentUser = await User.findOne({ auth0Id }).select('_id');
+
+        // Escape regex special chars so queries like "john.doe" match literal "."
+        const escaped = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Find users whose username starts with the query
+        const results = await User.find({
+            username: { $regex: `^${escaped}`, $options: 'i' },
+            _id: { $ne: currentUser?._id }
+        }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(10);
+
+        res.status(200).json(results);
+    } catch (error) {
+        console.error('Error searching users by username:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+export const blockUser = async (req, res) => {
+    try {
+        const auth0Id = req.auth.payload.sub;
+        const { targetUserId } = req.params;
+
+        const currentUser = await User.findOne({ auth0Id });
+        if (!currentUser) return res.status(404).json({ message: 'User not found' });
+
+        if (currentUser._id.toString() === targetUserId) {
+            return res.status(400).json({ message: 'You cannot block yourself' });
+        }
+
+        const targetUser = await User.findById(targetUserId);
+        if (!targetUser) return res.status(404).json({ message: 'Target user not found' });
+
+        if (!currentUser.blockedUsers) {
+            currentUser.blockedUsers = [];
+        }
+
+        const alreadyBlocked = currentUser.blockedUsers.some(id => id.toString() === targetUserId);
+        if (!alreadyBlocked) {
+            currentUser.blockedUsers.push(targetUserId);
+            await currentUser.save();
+        }
+
+        await currentUser.populate('blockedUsers', '_id displayName username avatarUrl techDiscipline about');
+
+        res.status(200).json({ 
+            success: true, 
+            message: `User ${targetUser.displayName || targetUser.username} blocked`, 
+            blockedUsers: currentUser.blockedUsers 
+        });
+    } catch (error) {
+        console.error('Error blocking user:', error);
+        res.status(500).json({ message: 'Internal server error while blocking user' });
+    }
+};
+
+export const unblockUser = async (req, res) => {
+    try {
+        const auth0Id = req.auth.payload.sub;
+        const { targetUserId } = req.params;
+
+        const currentUser = await User.findOne({ auth0Id });
+        if (!currentUser) return res.status(404).json({ message: 'User not found' });
+
+        if (!currentUser.blockedUsers) {
+            currentUser.blockedUsers = [];
+        }
+
+        currentUser.blockedUsers = currentUser.blockedUsers.filter(id => id.toString() !== targetUserId);
+        await currentUser.save();
+
+        await currentUser.populate('blockedUsers', '_id displayName username avatarUrl techDiscipline about');
+
+        res.status(200).json({ 
+            success: true, 
+            message: 'User unblocked successfully', 
+            blockedUsers: currentUser.blockedUsers 
+        });
+    } catch (error) {
+        console.error('Error unblocking user:', error);
+        res.status(500).json({ message: 'Internal server error while unblocking user' });
+    }
+};
+
+export const getBlockedUsers = async (req, res) => {
+    try {
+        const auth0Id = req.auth.payload.sub;
+        const currentUser = await User.findOne({ auth0Id }).populate('blockedUsers', '_id displayName username avatarUrl techDiscipline about');
+        if (!currentUser) return res.status(404).json({ message: 'User not found' });
+
+        res.status(200).json(currentUser.blockedUsers || []);
+    } catch (error) {
+        console.error('Error fetching blocked users:', error);
+        res.status(500).json({ message: 'Internal server error fetching blocked users' });
     }
 };
