@@ -5608,7 +5608,10 @@ export default function Dashboard() {
                                                 {activeUsers.includes(u._id) && <OnlineDot style={{ width: '12px', height: '12px', bottom: '-2px', right: '-2px', border: '2.5px solid var(--colors-bg)' }} />}
                                             </AvatarWrapper>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
-                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease' }}>{u.displayName}</span>
+                                                <span style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: '600', transition: 'color 0.2s ease', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    {u.displayName}
+                                                    {u.isSelf && <span style={{ fontSize: '0.75rem', color: 'var(--colors-textMuted)', fontWeight: '400' }}>(You)</span>}
+                                                </span>
                                                 <span style={{ color: 'var(--colors-accent)', fontSize: '0.78rem', fontWeight: '500' }}>@{u.username}</span>
                                             </div>
                                             <div style={{ 

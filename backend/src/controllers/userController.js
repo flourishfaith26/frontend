@@ -158,15 +158,20 @@ export const searchByUsername = async (req, res) => {
 
         // Find users whose username or displayName matches query
         const results = await User.find({
-            _id: { $ne: currentUser?._id },
             $or: [
                 { username: { $regex: escaped, $options: 'i' } },
                 { displayName: { $regex: escaped, $options: 'i' } }
             ]
         }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(20);
 
+        // Map isSelf if the result matches the current user
+        const mapped = results.map(u => ({
+            ...u.toObject(),
+            isSelf: currentUser?._id && u._id.toString() === currentUser._id.toString()
+        }));
+
         // Sort results: exact username match first, then prefix username match, then others
-        const sorted = [...results].sort((a, b) => {
+        const sorted = [...mapped].sort((a, b) => {
             const aName = (a.username || '').toLowerCase();
             const bName = (b.username || '').toLowerCase();
             const q = cleanQuery.toLowerCase();
