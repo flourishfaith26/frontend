@@ -251,14 +251,19 @@ export default function ProfileSetup() {
 
   const checkAvailabilityDebounced = (username) => {
     if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
-    const validation = validateUsernameFormat(username);
-    if (!validation.isValid) {
-      setUsernameChecking(false);
-      setUsernameFeedback({ available: false, message: validation.error });
-      return;
-    }
+    // Clear stale feedback immediately so no false error flashes while typing
+    setUsernameFeedback(null);
+    setUsernameChecking(false);
+    if (!username) return;
+    // Debounce both format-validation errors and API availability check
     setUsernameChecking(true);
     checkTimerRef.current = setTimeout(async () => {
+      const validation = validateUsernameFormat(username);
+      if (!validation.isValid) {
+        setUsernameChecking(false);
+        setUsernameFeedback({ available: false, message: validation.error });
+        return;
+      }
       try {
         const token = await getAccessTokenSilently();
         const res = await fetch(`${BACKEND_URL}/api/users/check-username?username=${encodeURIComponent(validation.normalized)}`, {
@@ -273,7 +278,7 @@ export default function ProfileSetup() {
       } finally {
         setUsernameChecking(false);
       }
-    }, 300);
+    }, 400);
   };
 
   const handleAvatarChange = async (e) => {
@@ -362,13 +367,7 @@ export default function ProfileSetup() {
     if (name === 'username') {
       // Auto-strip leading @ and lowercase
       value = normalizeUsername(value);
-      if (!value) {
-        setUsernameFeedback(null);
-        setUsernameChecking(false);
-        if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
-      } else {
-        checkAvailabilityDebounced(value);
-      }
+      checkAvailabilityDebounced(value);
     }
     setFormData(prev => ({ ...prev, [name]: value }));
   };

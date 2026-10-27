@@ -698,17 +698,21 @@ export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTok
 
     const checkAvailabilityDebounced = (val) => {
         if (checkUsernameTimerRef.current) clearTimeout(checkUsernameTimerRef.current);
+        // Clear stale errors immediately so they don't linger while typing
+        setUsernameError('');
+        setIsCheckingUsername(false);
         const clean = normalizeUsername(val);
         if (!clean) return;
-        const validation = validateUsernameFormat(clean);
-        if (!validation.isValid) {
-            setUsernameError(validation.error);
-            return;
-        }
         if (clean === currentUser?.username) return;
 
         setIsCheckingUsername(true);
         checkUsernameTimerRef.current = setTimeout(async () => {
+            const validation = validateUsernameFormat(clean);
+            if (!validation.isValid) {
+                setIsCheckingUsername(false);
+                setUsernameError(validation.error);
+                return;
+            }
             try {
                 const token = await getAccessTokenSilently();
                 const res = await fetch(`${BACKEND_URL}/api/users/check-username?username=${encodeURIComponent(clean)}`, {
@@ -727,7 +731,7 @@ export const ProfilePane = ({ onBack, currentUser, onUpdateProfile, getAccessTok
             } finally {
                 setIsCheckingUsername(false);
             }
-        }, 350);
+        }, 400);
     };
 
     const handleAvatarChange = async (e) => {
