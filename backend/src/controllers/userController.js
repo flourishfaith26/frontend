@@ -144,16 +144,16 @@ export const searchByUsername = async (req, res) => {
     try {
         const { username } = req.query;
         if (!username) {
-            return res.status(400).json({ message: 'Username query must be at least 2 characters.' });
+            return res.status(200).json([]);
         }
         const cleanQuery = normalizeUsername(username);
-        if (cleanQuery.length < 2) {
-            return res.status(400).json({ message: 'Username query must be at least 2 characters.' });
+        if (!cleanQuery) {
+            return res.status(200).json([]);
         }
         const auth0Id = req.auth.payload.sub;
         const currentUser = await User.findOne({ auth0Id }).select('_id');
 
-        // Escape regex special chars so queries like "john.doe" match literal "."
+        // Escape regex special chars so queries match literal characters
         const escaped = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         // Find users whose username or displayName matches query
@@ -162,7 +162,7 @@ export const searchByUsername = async (req, res) => {
                 { username: { $regex: escaped, $options: 'i' } },
                 { displayName: { $regex: escaped, $options: 'i' } }
             ]
-        }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(20);
+        }).select('_id displayName username avatarUrl techDiscipline onlineStatus').limit(25);
 
         // Map isSelf if the result matches the current user
         const mapped = results.map(u => ({
@@ -170,18 +170,32 @@ export const searchByUsername = async (req, res) => {
             isSelf: currentUser?._id && u._id.toString() === currentUser._id.toString()
         }));
 
-        // Sort results: exact username match first, then prefix username match, then others
+        // Sort results:
+        // 1. Exact username match
+        // 2. Username starts with query (e.g. typing 'f' shows usernames starting with 'f' first)
+        // 3. DisplayName starts with query
+        // 4. Alphabetical
         const sorted = [...mapped].sort((a, b) => {
-            const aName = (a.username || '').toLowerCase();
-            const bName = (b.username || '').toLowerCase();
+            const aUser = (a.username || '').toLowerCase();
+            const bUser = (b.username || '').toLowerCase();
+            const aDisp = (a.displayName || '').toLowerCase();
+            const bDisp = (b.displayName || '').toLowerCase();
             const q = cleanQuery.toLowerCase();
-            if (aName === q) return -1;
-            if (bName === q) return 1;
-            const aStarts = aName.startsWith(q);
-            const bStarts = bName.startsWith(q);
-            if (aStarts && !bStarts) return -1;
-            if (!aStarts && bStarts) return 1;
-            return 0;
+
+            if (aUser === q && bUser !== q) return -1;
+            if (bUser === q && aUser !== q) return 1;
+
+            const aUserStarts = aUser.startsWith(q);
+            const bUserStarts = bUser.startsWith(q);
+            if (aUserStarts && !bUserStarts) return -1;
+            if (!aUserStarts && bUserStarts) return 1;
+
+            const aDispStarts = aDisp.startsWith(q);
+            const bDispStarts = bDisp.startsWith(q);
+            if (aDispStarts && !bDispStarts) return -1;
+            if (!aDispStarts && bDispStarts) return 1;
+
+            return aUser.localeCompare(bUser);
         });
 
         res.status(200).json(sorted);

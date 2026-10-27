@@ -2195,7 +2195,7 @@ export default function Dashboard() {
     const searchUsersDebounced = async (query) => {
         if (userSearchTimerRef.current) clearTimeout(userSearchTimerRef.current);
         const cleanQuery = normalizeUsername(query);
-        if (!cleanQuery || cleanQuery.length < 2) {
+        if (!cleanQuery) {
             setUserSearchResults([]);
             setIsSearchingUsers(false);
             return;
@@ -2216,7 +2216,7 @@ export default function Dashboard() {
             } finally {
                 setIsSearchingUsers(false);
             }
-        }, 350);
+        }, 200);
     };
 
     const toggleUserSelection = (userId) => {
@@ -5550,7 +5550,7 @@ export default function Dashboard() {
                                 {convType === 'direct' ? (() => {
                                     // Direct: username search results
                                     const cleanSearch = normalizeUsername(userSearchQuery);
-                                    if (!cleanSearch || cleanSearch.length < 2) {
+                                    if (!cleanSearch) {
                                         return (
                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '180px', padding: '20px', gap: '12px' }}>
                                                 <div style={{ padding: '16px', borderRadius: '50%', backgroundColor: 'var(--colors-surface)', border: '1px solid var(--colors-border)' }}>
@@ -5558,7 +5558,7 @@ export default function Dashboard() {
                                                 </div>
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', textAlign: 'center' }}>
                                                     <div style={{ color: 'var(--colors-textMain)', fontSize: '0.95rem', fontWeight: 'bold' }}>Search by @username</div>
-                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.82rem' }}>Type at least 2 characters to find a user</div>
+                                                    <div style={{ color: 'var(--colors-textMuted)', fontSize: '0.82rem' }}>Type a username to find someone</div>
                                                 </div>
                                             </div>
                                         );
